@@ -24,4 +24,11 @@ def send(text: str) -> None:
     by the AI in its output, so no further prefix logic is needed here.
     """
     full_text = f"📅 {text}"
-    asyncio.run(_send_async(full_text))
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_send_async(full_text))
+        else:
+            asyncio.run(_send_async(full_text))
+    except RuntimeError:
+        asyncio.run(_send_async(full_text))

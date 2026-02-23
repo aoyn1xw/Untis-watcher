@@ -69,7 +69,11 @@ def fetch(session: webuntis.session.Session) -> list[dict]:
     lessons = []
     for lesson in raw_lessons:
         # lesson.code is an enum-like value: None / "cancelled" / "irregular"
-        code     = lesson.code.name if lesson.code else None
+        code = (
+            lesson.code.name
+            if hasattr(lesson.code, "name")
+            else (str(lesson.code) if lesson.code else None)
+        )
         subjects = _names(lesson.subjects)
 
         lessons.append({

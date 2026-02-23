@@ -36,9 +36,7 @@ def main() -> None:
                 current_tt   = timetable.fetch(session)
                 current_hash = detector.hash_tt(current_tt)
 
-                if current_hash == last_hash:
-                    print(f"[poll] No change detected ({len(current_tt)} lessons).")
-                else:
+                if current_hash != last_hash and last_hash is not None:
                     print("[poll] Change detected – analysing …")
                     changes = detector.find_changes(last_tt, current_tt)
                     print(f"       {len(changes)} change(s): "
@@ -49,10 +47,12 @@ def main() -> None:
 
                     notifier.send(summary)
                     print("       Telegram message sent.")
+                else:
+                    print(f"[poll] No change detected ({len(current_tt)} lessons).")
 
-                    storage.save(current_tt)
-                    last_tt   = current_tt
-                    last_hash = current_hash
+                storage.save(current_tt)
+                last_tt   = current_tt
+                last_hash = current_hash
 
             finally:
                 # Always log out, even if an exception occurred above
