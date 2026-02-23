@@ -9,7 +9,7 @@ from config import GITHUB_TOKEN, AI_MODEL
 
 # GitHub Models exposes an OpenAI-compatible REST API
 _client = OpenAI(
-    base_url="https://models.inference.ai.azure.com",
+        base_url="https://models.github.ai/inference",
     api_key=GITHUB_TOKEN,
 )
 

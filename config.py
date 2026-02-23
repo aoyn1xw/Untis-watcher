@@ -14,6 +14,8 @@ UNTIS_SERVER   = os.environ["UNTIS_SERVER"]    # e.g. "melpomene.webuntis.com"
 UNTIS_SCHOOL   = os.environ["UNTIS_SCHOOL"]    # school slug as shown in the URL
 UNTIS_USER     = os.environ["UNTIS_USER"]
 UNTIS_PASSWORD = os.environ["UNTIS_PASSWORD"]
+UNTIS_ELEMENT_TYPE = int(os.getenv("UNTIS_ELEMENT_TYPE", "5"))  # 5=class/student
+UNTIS_ELEMENT_ID   = int(os.environ["UNTIS_ELEMENT_ID"])        # your class/student ID
 
 # ── GitHub Models (OpenAI-compatible) ────────────────────────────────────────
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]

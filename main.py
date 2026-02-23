@@ -22,11 +22,19 @@ def main() -> None:
     # ── Bootstrap ─────────────────────────────────────────────────────────────
     last_tt   = storage.load() or []
     last_hash = detector.hash_tt(last_tt)
+    is_first_run = len(last_tt) == 0  # Track if this is the first run
 
     if last_tt:
         print(f"Loaded persisted timetable ({len(last_tt)} lessons).")
     else:
         print("No persisted timetable found – will treat first fetch as baseline.")
+    
+    # Send startup notification
+    try:
+        notifier.send("🤖 Untis Watcher is now up and running! I'll notify you of any timetable changes.")
+        print("Startup notification sent to Telegram.")
+    except Exception as e:
+        print(f"Failed to send startup notification: {e}")
 
     # ── Poll loop ──────────────────────────────────────────────────────────────
     while True:
@@ -36,7 +44,7 @@ def main() -> None:
                 current_tt   = timetable.fetch(session)
                 current_hash = detector.hash_tt(current_tt)
 
-                if current_hash != last_hash and last_hash is not None:
+                if current_hash != last_hash and last_hash is not None and not is_first_run:
                     print("[poll] Change detected – analysing …")
                     changes = detector.find_changes(last_tt, current_tt)
                     print(f"       {len(changes)} change(s): "
@@ -47,6 +55,9 @@ def main() -> None:
 
                     notifier.send(summary)
                     print("       Telegram message sent.")
+                elif is_first_run:
+                    print(f"[poll] First run – saved baseline with {len(current_tt)} lessons.")
+                    is_first_run = False  # Only skip once
                 else:
                     print(f"[poll] No change detected ({len(current_tt)} lessons).")
 
@@ -56,7 +67,7 @@ def main() -> None:
 
             finally:
                 # Always log out, even if an exception occurred above
-                session.logout()
+                timetable.logout(session)
 
         except Exception:
             print("[error] Unexpected error during poll:")
