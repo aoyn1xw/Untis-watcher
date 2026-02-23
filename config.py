@@ -4,10 +4,20 @@ Never import secrets directly; always go through this module.
 """
 
 import os
+import sys
 from dotenv import load_dotenv
 
-# Load variables from a .env file in the project root (if present)
-load_dotenv()
+# Determine the base path (works for both script and frozen executable)
+if getattr(sys, 'frozen', False):
+    # Running as compiled executable
+    base_path = os.path.dirname(sys.executable)
+else:
+    # Running as script
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+# Load variables from .env file in the executable/script directory
+env_path = os.path.join(base_path, '.env')
+load_dotenv(env_path)
 
 # ── WebUntis credentials ──────────────────────────────────────────────────────
 UNTIS_SERVER   = os.environ["UNTIS_SERVER"]    # e.g. "melpomene.webuntis.com"

@@ -235,6 +235,23 @@ sudo systemctl status untis-watcher
 ### Docker (Optional)
 Can be containerized for easier deployment on cloud platforms.
 
+## Building Executable (Optional)
+
+You can build a standalone Windows executable using PyInstaller:
+
+```bash
+python build_exe.py
+```
+
+Or use the batch file:
+```bash
+.\build.bat
+```
+
+The executable will be created in the `dist/` folder. Make sure to place your `.env` file in the same directory as the executable.
+
+**Note:** The `UntisWatcher.spec` file includes all necessary hidden imports including `dotenv` to ensure the executable works correctly.
+
 ## Troubleshooting
 
 ### 403 Forbidden Error
@@ -255,6 +272,10 @@ Can be containerized for easier deployment on cloud platforms.
 - The bot only notifies on changes, not on every poll
 - Check that `POLL_INTERVAL` isn't too long
 - Verify the timetable data is being fetched correctly
+
+### Executable "No module named 'dotenv'" Error
+- This has been fixed in the latest version by adding `dotenv` to `hiddenimports` in `UntisWatcher.spec`
+- Rebuild the executable using `python build_exe.py`
 
 ## Project Structure
 
