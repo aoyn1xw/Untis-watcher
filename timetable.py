@@ -16,20 +16,19 @@ _EXAM_KEYWORDS = ("prüfung", "klausur", "test", "pruefung")
 
 
 def get_session() -> requests.Session:
+    """Open a requests.Session and log in to WebUntis. Returns the session with auth cookie set."""
     session = requests.Session()
     session.headers.update({
-        session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    "Accept-Language": "de-DE,de;q=0.9",
-    "Origin": f"https://{UNTIS_SERVER}",
-    "Referer": f"https://{UNTIS_SERVER}/WebUntis/",
-})
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Language": "de-DE,de;q=0.9",
+        "Origin": f"https://{UNTIS_SERVER}",
+        "Referer": f"https://{UNTIS_SERVER}/WebUntis/",
     })
+
     school_slug = UNTIS_SCHOOL.replace("/", "%2F").replace(" ", "+")
     url = f"https://{UNTIS_SERVER}/WebUntis/jsonrpc.do?school={school_slug}"
-
 
     payload = {
         "id": "1",
@@ -51,7 +50,7 @@ def get_session() -> requests.Session:
 
     session_id = data["result"]["sessionId"]
     session.cookies.set("JSESSIONID", session_id)
-    session._untis_url = url  # store for later use in fetch()
+    session._untis_url = url
     return session
 
 
@@ -69,17 +68,6 @@ def logout(session: requests.Session) -> None:
 
 
 def _resolve_change_type(code: str | None, subjects: list[str]) -> str:
-    """
-    Map the raw WebUntis code + subject name to a human-readable change type.
-
-    Codes used by WebUntis:
-      None / "regular" → normal lesson
-      "irregular"      → Änderung 🟢 (room, teacher, or time changed)
-      "cancelled"      → Entfall 🔺 (lesson dropped)
-
-    If the subject name contains a known exam keyword the lesson is
-    classified as "exam" regardless of its code.
-    """
     subject_lower = " ".join(subjects).lower()
     if any(kw in subject_lower for kw in _EXAM_KEYWORDS):
         return "exam"
@@ -91,14 +79,9 @@ def _resolve_change_type(code: str | None, subjects: list[str]) -> str:
 
 
 def fetch(session: requests.Session) -> list[dict]:
-    """
-    Return a sorted list of lesson dicts covering today + DAYS_AHEAD days.
-    Each dict contains: id, start, end, subjects, teachers, rooms, code, change_type.
-    """
     today = date.today()
     end   = today + timedelta(days=DAYS_AHEAD)
 
-    # WebUntis expects dates as integers in YYYYMMDD format
     start_int = int(today.strftime("%Y%m%d"))
     end_int   = int(end.strftime("%Y%m%d"))
 
@@ -107,7 +90,7 @@ def fetch(session: requests.Session) -> list[dict]:
         "method": "getTimetable",
         "params": {
             "id": 0,
-            "type": 5,  # type 5 = student timetable
+            "type": 5,
             "startDate": start_int,
             "endDate": end_int,
         },
@@ -125,16 +108,12 @@ def fetch(session: requests.Session) -> list[dict]:
     lessons = []
 
     for lesson in raw_lessons:
-        # Extract names from subject/teacher/room lists
         subjects = [s.get("name", s.get("longName", "")) for s in lesson.get("su", [])]
         teachers = [t.get("name", t.get("longName", "")) for t in lesson.get("te", [])]
         rooms    = [r.get("name", r.get("longName", "")) for r in lesson.get("ro", [])]
 
-        # code field: "cancelled", "irregular", or absent (normal)
         code = lesson.get("code", None)
 
-        # Convert date/time integers to ISO strings
-        # date: YYYYMMDD, startTime/endTime: HHMM
         raw_date  = str(lesson.get("date", ""))
         raw_start = str(lesson.get("startTime", "")).zfill(4)
         raw_end   = str(lesson.get("endTime", "")).zfill(4)
@@ -153,6 +132,5 @@ def fetch(session: requests.Session) -> list[dict]:
             "change_type": _resolve_change_type(code, subjects),
         })
 
-    # Stable ordering by start time, then by id for ties
     lessons.sort(key=lambda l: (l["start"], l["id"]))
     return lessons
