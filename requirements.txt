@@ -2,3 +2,5 @@ requests
 openai
 python-telegram-bot
 python-dotenv
+pystray
+pillow

@@ -10,6 +10,7 @@ A Python-based Telegram bot that monitors WebUntis for timetable changes and sen
 - 📱 Automatic Telegram notifications
 - 💾 Persistent storage to track changes across restarts
 - 🔄 Continuous monitoring with configurable polling interval
+- 🖥️ **System tray integration** on Windows - runs silently in background
 
 ## Requirements
 
@@ -40,6 +41,8 @@ Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+**Note:** On Windows, the bot uses `pystray` to run in the system tray, which requires `Pillow`. These are already included in `requirements.txt`.
 
 ## Configuration
 
@@ -131,43 +134,106 @@ DAYS_AHEAD="7"
 
 ## Usage
 
+### Windows (System Tray)
+
 Run the bot:
 
 ```bash
 python main.py
 ```
 
-On startup, you'll receive a Telegram message confirming the bot is running. The bot will:
+Or double-click `main.py` to run it directly.
 
-1. Fetch your current timetable from WebUntis
-2. Check for changes every 5 minutes (configurable)
-3. Send AI-generated summaries of any changes to Telegram
-4. Continuously monitor until stopped with `Ctrl+C`
+The bot will:
+1. Start in the background with a **system tray icon** 📍
+2. Send a Telegram confirmation message
+3. Monitor your timetable every 5 minutes
+4. Show notifications for any changes
+
+**To quit:** Right-click the system tray icon and select "Quit"
 
 **First run:** The bot will save your current timetable as a baseline and won't send notifications until actual changes are detected.
 
+### Linux/macOS (Terminal)
+
+Run in the foreground:
+```bash
+python main.py
+```
+
+Or use `screen`/`tmux` to run in background (see Deployment Options below).
+
 ## Deployment Options
 
-### Local Machine (Recommended for Testing)
-- Keep the script running in a terminal
-- Use `Ctrl+C` to stop
+### Windows (System Tray - Recommended)
 
-### Windows (Background Service)
-- Use Task Scheduler to run at startup
-- Or use `pythonw main.py` to run without console
+The bot automatically runs in the system tray when started. Look for the blue circle icon in your taskbar notification area.
 
-### VPS/Cloud Server
-- Use `screen` or `tmux` to keep it running:
-  ```bash
-  screen -S untis-watcher
-  python main.py
-  # Press Ctrl+A, then D to detach
-  ```
-- Or create a systemd service (Linux)
+**To start automatically on boot:**
+
+1. Press `Win + R` and type `shell:startup`
+2. Create a shortcut to your Python script:
+   - Right-click → New → Shortcut
+   - Location: `C:\Users\ayon1xw\Documents\GitHub\Untis-watcher\venv\Scripts\pythonw.exe "C:\Users\ayon1xw\Documents\GitHub\Untis-watcher\main.py"`
+   - Name it "Untis Watcher"
+3. The bot will now start silently when you log in
+
+**Alternative: Task Scheduler**
+
+1. Open Task Scheduler (`Win + R`, type `taskschd.msc`)
+2. Click "Create Basic Task"
+3. Name: "Untis Watcher"
+4. Trigger: "When I log on"
+5. Action: "Start a program"
+6. Program: `C:\Users\ayon1xw\Documents\GitHub\Untis-watcher\venv\Scripts\pythonw.exe`
+7. Arguments: `main.py`
+8. Start in: `C:\Users\ayon1xw\Documents\GitHub\Untis-watcher`
+9. Finish
+
+### VPS/Cloud Server (Linux)
+
+**Using screen (simple):**
+```bash
+screen -S untis-watcher
+python main.py
+# Press Ctrl+A, then D to detach
+# To reattach: screen -r untis-watcher
+```
+
+**Using systemd (auto-start):**
+
+Create a service file:
+```bash
+sudo nano /etc/systemd/system/untis-watcher.service
+```
+
+Add this content:
+```ini
+[Unit]
+Description=Untis Watcher Bot
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/path/to/Untis-watcher
+ExecStart=/path/to/Untis-watcher/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl enable untis-watcher
+sudo systemctl start untis-watcher
+sudo systemctl status untis-watcher
+```
 
 ### Docker (Optional)
-- Can be containerized for easier deployment
-- Useful for running on cloud platforms
+Can be containerized for easier deployment on cloud platforms.
 
 ## Troubleshooting
 
