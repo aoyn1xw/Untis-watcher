@@ -4,13 +4,13 @@ A Python-based Telegram bot that monitors WebUntis for timetable changes and sen
 
 ## Features
 
-- 📅 Fetches timetable data from WebUntis via JSON-RPC API
-- 🔍 Detects changes in lessons, rooms, teachers, or cancellations
-- 🤖 AI-powered summaries using GitHub Models (GPT-5)
-- 📱 Automatic Telegram notifications
-- 💾 Persistent storage to track changes across restarts
-- 🔄 Continuous monitoring with configurable polling interval
-- 🖥️ **System tray integration** on Windows - runs silently in background
+- Fetches timetable data from WebUntis via JSON-RPC API
+- Detects changes in lessons, rooms, teachers, or cancellations
+- AI-powered summaries using GitHub Models (GPT-5)
+- Automatic Telegram notifications
+- Persistent storage to track changes across restarts
+- Continuous monitoring with configurable polling interval
+- **System tray integration** on Windows - runs silently in background
 
 ## Requirements
 
@@ -145,7 +145,7 @@ python main.py
 Or double-click `main.py` to run it directly.
 
 The bot will:
-1. Start in the background with a **system tray icon** 📍
+1. Start in the background with a **system tray icon**
 2. Send a Telegram confirmation message
 3. Monitor your timetable every 5 minutes
 4. Show notifications for any changes
@@ -303,11 +303,11 @@ Untis-watcher/
 
 ## Change Types Detected
 
-- 🔺 **Cancellations** (Entfall): Free periods
-- 🟢 **Changes** (Änderung): Room, teacher, or time modifications  
-- 🟡 **Exams** (Prüfung): Detected by keywords in subject names
-- ➕ **Additions**: New lessons added to timetable
-- ➖ **Removals**: Lessons removed from timetable
+- **Cancellations** (Entfall): Free periods
+- **Changes** (Änderung): Room, teacher, or time modifications  
+- **Exams** (Prüfung): Detected by keywords in subject names
+- **Additions**: New lessons added to timetable
+- **Removals**: Lessons removed from timetable
 
 ## Disclaimer
 
