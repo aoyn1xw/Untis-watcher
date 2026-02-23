@@ -10,7 +10,7 @@ from config import (
 )
 
 
-def get_session() -> webuntis.session.Session:
+def get_session() -> requests.Session:
     """Open and log in to a WebUntis session."""
     s = webuntis.session.Session(
         server=UNTIS_SERVER,
