@@ -2,8 +2,6 @@
 timetable.py – Connect to WebUntis and fetch the upcoming timetable.
 """
 
-import webuntis
-import webuntis.session
 from datetime import date, timedelta
 from config import (
     UNTIS_SERVER, UNTIS_SCHOOL,
