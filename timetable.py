@@ -16,10 +16,20 @@ _EXAM_KEYWORDS = ("prüfung", "klausur", "test", "pruefung")
 
 
 def get_session() -> requests.Session:
-    """Open a requests.Session and log in to WebUntis. Returns the session with auth cookie set."""
     session = requests.Session()
+    session.headers.update({
+        session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "Accept-Language": "de-DE,de;q=0.9",
+    "Origin": f"https://{UNTIS_SERVER}",
+    "Referer": f"https://{UNTIS_SERVER}/WebUntis/",
+})
+    })
     school_slug = UNTIS_SCHOOL.replace("/", "%2F").replace(" ", "+")
     url = f"https://{UNTIS_SERVER}/WebUntis/jsonrpc.do?school={school_slug}"
+
 
     payload = {
         "id": "1",
