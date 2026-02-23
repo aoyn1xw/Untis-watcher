@@ -1,0 +1,16 @@
+# Secrets – never commit these
+.env
+
+# Bot state – regenerated on first run
+last_timetable.json
+
+# Python artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
