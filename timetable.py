@@ -1,8 +1,9 @@
 """
 timetable.py – Connect to WebUntis and fetch the upcoming timetable.
+Uses the WebUntis JSON-RPC API directly via requests (no webuntis library).
 """
-import requests
 
+import requests
 from datetime import date, timedelta
 from config import (
     UNTIS_SERVER, UNTIS_SCHOOL,
@@ -10,27 +11,50 @@ from config import (
     DAYS_AHEAD,
 )
 
-
-def get_session() -> requests.Session:
-    """Open and log in to a WebUntis session."""
-    s = webuntis.session.Session(
-        server=UNTIS_SERVER,
-        school=UNTIS_SCHOOL,
-        username=UNTIS_USER,
-        password=UNTIS_PASSWORD,
-        useragent="untis-watcher/1.0",
-    )
-    s.login()
-    return s
-
-
-def _names(obj_list) -> list[str]:
-    """Extract .name from a list of WebUntis objects, gracefully."""
-    return [o.name for o in obj_list if hasattr(o, "name")]
-
-
 # Keywords in subject names that indicate an exam period
 _EXAM_KEYWORDS = ("prüfung", "klausur", "test", "pruefung")
+
+
+def get_session() -> requests.Session:
+    """Open a requests.Session and log in to WebUntis. Returns the session with auth cookie set."""
+    session = requests.Session()
+    url = f"https://{UNTIS_SERVER}/WebUntis/jsonrpc.do?school={UNTIS_SCHOOL}"
+
+    payload = {
+        "id": "1",
+        "method": "authenticate",
+        "params": {
+            "user": UNTIS_USER,
+            "password": UNTIS_PASSWORD,
+            "client": "untis-watcher"
+        },
+        "jsonrpc": "2.0"
+    }
+
+    response = session.post(url, json=payload)
+    response.raise_for_status()
+    data = response.json()
+
+    if "error" in data:
+        raise ConnectionError(f"WebUntis login failed: {data['error']}")
+
+    session_id = data["result"]["sessionId"]
+    session.cookies.set("JSESSIONID", session_id)
+    session._untis_url = url  # store for later use in fetch()
+    return session
+
+
+def logout(session: requests.Session) -> None:
+    """Log out of WebUntis."""
+    try:
+        session.post(session._untis_url, json={
+            "id": "2",
+            "method": "logout",
+            "params": {},
+            "jsonrpc": "2.0"
+        })
+    except Exception:
+        pass  # best-effort logout
 
 
 def _resolve_change_type(code: str | None, subjects: list[str]) -> str:
@@ -55,7 +79,7 @@ def _resolve_change_type(code: str | None, subjects: list[str]) -> str:
     return "normal"
 
 
-def fetch(session: webuntis.session.Session) -> list[dict]:
+def fetch(session: requests.Session) -> list[dict]:
     """
     Return a sorted list of lesson dicts covering today + DAYS_AHEAD days.
     Each dict contains: id, start, end, subjects, teachers, rooms, code, change_type.
@@ -63,25 +87,57 @@ def fetch(session: webuntis.session.Session) -> list[dict]:
     today = date.today()
     end   = today + timedelta(days=DAYS_AHEAD)
 
-    raw_lessons = session.timetable(start=today, end=end)
+    # WebUntis expects dates as integers in YYYYMMDD format
+    start_int = int(today.strftime("%Y%m%d"))
+    end_int   = int(end.strftime("%Y%m%d"))
 
+    payload = {
+        "id": "3",
+        "method": "getTimetable",
+        "params": {
+            "id": 0,
+            "type": 5,  # type 5 = student timetable
+            "startDate": start_int,
+            "endDate": end_int,
+        },
+        "jsonrpc": "2.0"
+    }
+
+    response = session.post(session._untis_url, json=payload)
+    response.raise_for_status()
+    data = response.json()
+
+    if "error" in data:
+        raise ConnectionError(f"WebUntis timetable fetch failed: {data['error']}")
+
+    raw_lessons = data.get("result", [])
     lessons = []
+
     for lesson in raw_lessons:
-        # lesson.code is an enum-like value: None / "cancelled" / "irregular"
-        code = (
-            lesson.code.name
-            if hasattr(lesson.code, "name")
-            else (str(lesson.code) if lesson.code else None)
-        )
-        subjects = _names(lesson.subjects)
+        # Extract names from subject/teacher/room lists
+        subjects = [s.get("name", s.get("longName", "")) for s in lesson.get("su", [])]
+        teachers = [t.get("name", t.get("longName", "")) for t in lesson.get("te", [])]
+        rooms    = [r.get("name", r.get("longName", "")) for r in lesson.get("ro", [])]
+
+        # code field: "cancelled", "irregular", or absent (normal)
+        code = lesson.get("code", None)
+
+        # Convert date/time integers to ISO strings
+        # date: YYYYMMDD, startTime/endTime: HHMM
+        raw_date  = str(lesson.get("date", ""))
+        raw_start = str(lesson.get("startTime", "")).zfill(4)
+        raw_end   = str(lesson.get("endTime", "")).zfill(4)
+
+        start_iso = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}T{raw_start[:2]}:{raw_start[2:]}"
+        end_iso   = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}T{raw_end[:2]}:{raw_end[2:]}"
 
         lessons.append({
-            "id":          lesson.id,
-            "start":       lesson.start.isoformat(),
-            "end":         lesson.end.isoformat(),
+            "id":          lesson.get("id"),
+            "start":       start_iso,
+            "end":         end_iso,
             "subjects":    subjects,
-            "teachers":    _names(lesson.teachers),
-            "rooms":       _names(lesson.rooms),
+            "teachers":    teachers,
+            "rooms":       rooms,
             "code":        code,
             "change_type": _resolve_change_type(code, subjects),
         })
