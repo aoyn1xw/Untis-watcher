@@ -103,21 +103,21 @@ POLL_INTERVAL="300"
 DAYS_AHEAD="7"
 ```
 
-**Example with real values:**
+**Example with placeholder values:**
 
 ```env
-UNTIS_SERVER="ges-uellendahl-katernbe.webuntis.com"
-UNTIS_SCHOOL="ges-uellendahl-katernbe"
-UNTIS_USER="erdi.avdullahi"
-UNTIS_PASSWORD="MyPassword123"
+UNTIS_SERVER="example-school.webuntis.com"
+UNTIS_SCHOOL="example-school"
+UNTIS_USER="student.username"
+UNTIS_PASSWORD="replace_me"
 UNTIS_ELEMENT_TYPE="5"
-UNTIS_ELEMENT_ID="616"
+UNTIS_ELEMENT_ID="123456"
 
-GITHUB_TOKEN="github_pat_11BPX6UBY0..."
+GITHUB_TOKEN="github_pat_replace_me"
 AI_MODEL="gpt-5"
 
-TELEGRAM_TOKEN="8539641488:AAHNTP9hFnL1oLnGbDLySV2GhagLHMaW8V0"
-TELEGRAM_CHAT_ID="5131787452"
+TELEGRAM_TOKEN="123456789:replace_me"
+TELEGRAM_CHAT_ID="123456789"
 
 POLL_INTERVAL="300"
 DAYS_AHEAD="7"

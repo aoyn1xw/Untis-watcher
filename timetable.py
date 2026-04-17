@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from config import (
     UNTIS_SERVER, UNTIS_SCHOOL,
     UNTIS_USER, UNTIS_PASSWORD,
-    UNTIS_ELEMENT_TYPE, UNTIS_ELEMENT_ID,
+    UNTIS_ELEMENT_TYPE, UNTIS_ELEMENT_ID, DAYS_AHEAD,
 )
 
 # Keywords in subject names that indicate an exam period
@@ -18,6 +18,7 @@ _EXAM_KEYWORDS = ("prüfung", "klausur", "test", "pruefung")
 _TYPE_TEACHER = 2
 _TYPE_SUBJECT = 3
 _TYPE_ROOM    = 4
+_REQUEST_TIMEOUT = (10, 30)
 
 
 def get_session() -> requests.Session:
@@ -41,7 +42,7 @@ def get_session() -> requests.Session:
             "client": "untis-watcher"
         },
         "jsonrpc": "2.0"
-    })
+    }, timeout=_REQUEST_TIMEOUT)
     response.raise_for_status()
     
     data = response.json()
@@ -65,7 +66,7 @@ def logout(session: requests.Session) -> None:
             "method": "logout",
             "params": {},
             "jsonrpc": "2.0"
-        })
+        }, timeout=_REQUEST_TIMEOUT)
     except Exception:
         pass  # best-effort logout
 
@@ -83,9 +84,8 @@ def _resolve_change_type(code: str | None, subjects: list[str]) -> str:
 
 def fetch(session: requests.Session) -> list[dict]:
     today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    # Fetch this full week plus next full week (14 total days).
-    week_end = week_start + timedelta(days=13)
+    days_to_fetch = max(DAYS_AHEAD, 1)
+    range_end = today + timedelta(days=days_to_fetch - 1)
 
     # Use JSON-RPC API to get timetable
     response = session.post(session._untis_url, json={
@@ -97,8 +97,8 @@ def fetch(session: requests.Session) -> list[dict]:
                     "id": session._person_id,
                     "type": UNTIS_ELEMENT_TYPE
                 },
-                "startDate": week_start.strftime("%Y%m%d"),
-                "endDate": week_end.strftime("%Y%m%d"),
+                "startDate": today.strftime("%Y%m%d"),
+                "endDate": range_end.strftime("%Y%m%d"),
                 "showInfo": True,
                 "showSubstText": True,
                 "showLsText": True,
@@ -111,7 +111,7 @@ def fetch(session: requests.Session) -> list[dict]:
             }
         },
         "jsonrpc": "2.0"
-    })
+    }, timeout=_REQUEST_TIMEOUT)
     response.raise_for_status()
     
     data = response.json()

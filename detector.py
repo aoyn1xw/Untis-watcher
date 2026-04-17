@@ -18,11 +18,18 @@ def _lesson_sig(lesson: dict) -> dict:
     return {key: lesson.get(key) for key in COMPARE_KEYS}
 
 
+def _normalise_lesson_id(lesson_id) -> str | None:
+    """Normalise lesson IDs so mixed int/str IDs map to the same key."""
+    if lesson_id is None:
+        return None
+    return str(lesson_id)
+
+
 def _normalise_tt(tt: list[dict]) -> list[dict]:
     """Return a deterministic, comparison-aligned timetable representation."""
     return sorted(
-        [{"id": lesson.get("id"), **_lesson_sig(lesson)} for lesson in tt],
-        key=lambda lesson: lesson["id"],
+        [{"id": _normalise_lesson_id(lesson.get("id")), **_lesson_sig(lesson)} for lesson in tt],
+        key=lambda lesson: (lesson["id"] is None, lesson["id"] or ""),
     )
 
 
@@ -47,8 +54,8 @@ def find_changes(old: list[dict], new: list[dict]) -> list[dict]:
       - before: previous lesson state  (only for "changed")
       - after:  new lesson state        (only for "changed")
     """
-    old_by_id = {l["id"]: l for l in old}
-    new_by_id = {l["id"]: l for l in new}
+    old_by_id = {_normalise_lesson_id(l.get("id")): l for l in old}
+    new_by_id = {_normalise_lesson_id(l.get("id")): l for l in new}
 
     changes = []
 
