@@ -30,6 +30,7 @@ import notifier
 
 # Global flag to stop the polling loop
 running = True
+_STALE_SNAPSHOT_DAYS = 3
 
 
 def create_icon_image():
@@ -70,7 +71,7 @@ def poll_loop() -> None:
 
         latest_lesson_date = max(lesson_dates) if lesson_dates else None
 
-        if latest_lesson_date and latest_lesson_date < (date.today() - timedelta(days=3)):
+        if latest_lesson_date and latest_lesson_date < (date.today() - timedelta(days=_STALE_SNAPSHOT_DAYS)):
             print(
                 f"[startup] Snapshot is stale (last lesson: {latest_lesson_date.isoformat()}) – resetting baseline."
             )

@@ -68,4 +68,5 @@ Changes detected:
         )
         return response.choices[0].message.content.strip()
     except Exception:
+        # Any model client/API failure should degrade gracefully to plain text.
         return _fallback_summary(changes)
