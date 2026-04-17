@@ -8,6 +8,7 @@ message whenever the timetable changes. Runs in system tray on Windows.
 import time
 import traceback
 import threading
+from datetime import date, timedelta
 from PIL import Image, ImageDraw
 import pystray
 
@@ -47,13 +48,31 @@ def poll_loop() -> None:
     print("untis-watcher starting up …")
 
     # ── Bootstrap ─────────────────────────────────────────────────────────────
-    last_tt   = storage.load() or []
+    last_tt = storage.load() or []
+    stale_snapshot = False
+
+    if last_tt:
+        latest_start = max((lesson.get("start", "") for lesson in last_tt), default="")
+        latest_lesson_date = None
+        if latest_start:
+            try:
+                latest_lesson_date = date.fromisoformat(latest_start[:10])
+            except ValueError:
+                latest_lesson_date = None
+
+        if latest_lesson_date and latest_lesson_date < (date.today() - timedelta(days=3)):
+            print(
+                f"[startup] Snapshot is stale (last lesson: {latest_lesson_date.isoformat()}) – resetting baseline."
+            )
+            last_tt = []
+            stale_snapshot = True
+
     last_hash = detector.hash_tt(last_tt)
     is_first_run = len(last_tt) == 0  # Track if this is the first run
 
     if last_tt:
         print(f"Loaded persisted timetable ({len(last_tt)} lessons).")
-    else:
+    elif not stale_snapshot:
         print("No persisted timetable found – will treat first fetch as baseline.")
     
     # Send startup notification
