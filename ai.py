@@ -7,6 +7,25 @@ import json
 from openai import OpenAI
 from config import GITHUB_TOKEN, AI_MODEL
 
+try:
+    from openai import (
+        APIConnectionError,
+        APIError,
+        APITimeoutError,
+        AuthenticationError,
+        RateLimitError,
+    )
+    _AI_EXCEPTIONS = (
+        APIError,
+        APIConnectionError,
+        APITimeoutError,
+        AuthenticationError,
+        RateLimitError,
+    )
+except Exception:
+    # Fallback when exception classes differ across SDK versions.
+    _AI_EXCEPTIONS = (Exception,)
+
 # GitHub Models exposes an OpenAI-compatible REST API
 _client = OpenAI(
         base_url="https://models.github.ai/inference",
@@ -67,6 +86,6 @@ Changes detected:
             max_tokens=400,
         )
         return response.choices[0].message.content.strip()
-    except Exception:
-        # Any model client/API failure should degrade gracefully to plain text.
+    except _AI_EXCEPTIONS:
+        # Known model client/API failures should degrade gracefully to plain text.
         return _fallback_summary(changes)

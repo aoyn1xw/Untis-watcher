@@ -70,8 +70,10 @@ def poll_loop() -> None:
                 continue
 
         latest_lesson_date = max(lesson_dates) if lesson_dates else None
+        # 3 days avoids noisy startup floods after longer breaks (e.g. holidays).
+        staleness_cutoff = date.today() - timedelta(days=_STALE_SNAPSHOT_DAYS)
 
-        if latest_lesson_date and latest_lesson_date < (date.today() - timedelta(days=_STALE_SNAPSHOT_DAYS)):
+        if latest_lesson_date and latest_lesson_date < staleness_cutoff:
             print(
                 f"[startup] Snapshot is stale (last lesson: {latest_lesson_date.isoformat()}) – resetting baseline."
             )
