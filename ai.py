@@ -86,6 +86,7 @@ Changes detected:
             max_tokens=400,
         )
         return response.choices[0].message.content.strip()
-    except _AI_EXCEPTIONS:
+    except _AI_EXCEPTIONS as exc:
         # Known model client/API failures should degrade gracefully to plain text.
+        print(f"[ai] Model request failed, using plain-text fallback: {exc}")
         return _fallback_summary(changes)

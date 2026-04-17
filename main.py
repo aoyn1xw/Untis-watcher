@@ -67,6 +67,7 @@ def poll_loop() -> None:
             try:
                 lesson_dates.append(date.fromisoformat(start[:10]))
             except ValueError:
+                print(f"[startup] Ignoring lesson with invalid start date: {start!r}")
                 continue
 
         latest_lesson_date = max(lesson_dates) if lesson_dates else None
