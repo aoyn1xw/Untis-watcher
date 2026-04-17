@@ -14,6 +14,25 @@ _client = OpenAI(
 )
 
 
+def _fallback_summary(changes: list[dict]) -> str:
+    """Build a plain-text summary when the AI API call fails."""
+    lines = [f"⚠️ Timetable changed ({len(changes)} change(s)):"]
+
+    for change in changes:
+        lesson = change.get("lesson", {})
+        subjects = lesson.get("subjects") or []
+        subject = subjects[0] if subjects else "Unknown subject"
+        start = lesson.get("start", "unknown time")
+        change_label = (
+            "CANCELLED"
+            if lesson.get("change_type") == "cancelled"
+            else str(change.get("type", "changed")).upper()
+        )
+        lines.append(f"• {change_label}: {subject} at {start}")
+
+    return "\n".join(lines)
+
+
 def explain(old_tt: list[dict], new_tt: list[dict], changes: list[dict]) -> str:
     """
     Ask the AI model to summarise the detected changes in plain language.
@@ -40,11 +59,13 @@ Changes detected:
 {changes_json}
 """
 
-    response = _client.chat.completions.create(
-        model=AI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.5,
-        max_tokens=400,
-    )
-
-    return response.choices[0].message.content.strip()
+    try:
+        response = _client.chat.completions.create(
+            model=AI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=400,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return _fallback_summary(changes)
