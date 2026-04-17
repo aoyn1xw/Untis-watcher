@@ -5,6 +5,13 @@ detector.py – Hash a timetable and find what changed between two snapshots.
 import hashlib
 import json
 
+COMPARE_KEYS = {"start", "end", "subjects", "code", "change_type"}
+
+
+def _lesson_sig(lesson: dict) -> dict:
+    """Return only the lesson fields relevant for change detection."""
+    return {key: lesson.get(key) for key in COMPARE_KEYS}
+
 
 def hash_tt(tt: list[dict]) -> str:
     """
@@ -44,13 +51,13 @@ def find_changes(old: list[dict], new: list[dict]) -> list[dict]:
     # Lessons in both → check for modifications or newly-flagged exams
     for lid in old_by_id.keys() & new_by_id.keys():
         before = old_by_id[lid]
-        after  = new_by_id[lid]
-        if before != after:
+        after = new_by_id[lid]
+        if _lesson_sig(before) != _lesson_sig(after):
             changes.append({
-                "type":   "changed",
+                "type": "changed",
                 "lesson": after,
                 "before": before,
-                "after":  after,
+                "after": after,
             })
         elif after.get("change_type") == "exam" and before.get("change_type") != "exam":
             # Exam newly flagged on this lesson – always worth notifying about
