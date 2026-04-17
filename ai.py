@@ -22,7 +22,7 @@ try:
         AuthenticationError,
         RateLimitError,
     )
-except Exception:
+except ImportError:
     # Fallback when exception classes differ across SDK versions.
     _AI_EXCEPTIONS = (Exception,)
 
