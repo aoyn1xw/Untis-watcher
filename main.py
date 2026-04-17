@@ -9,8 +9,16 @@ import time
 import traceback
 import threading
 from datetime import date, timedelta
-from PIL import Image, ImageDraw
-import pystray
+
+try:
+    from PIL import Image, ImageDraw
+    import pystray
+    _HAS_TRAY = True
+except ImportError:
+    Image = None
+    ImageDraw = None
+    pystray = None
+    _HAS_TRAY = False
 
 import config            # imported early so missing env vars fail fast
 import storage
@@ -137,25 +145,29 @@ def on_quit(icon, item):
 
 
 def main() -> None:
-    """Set up system tray icon and start polling in background thread."""
-    # Start polling in a separate thread
-    polling_thread = threading.Thread(target=poll_loop, daemon=True)
-    polling_thread.start()
-    
-    # Create system tray icon
-    icon_image = create_icon_image()
-    icon = pystray.Icon(
-        "untis_watcher",
-        icon_image,
-        "Untis Watcher",
-        menu=pystray.Menu(
-            pystray.MenuItem("Untis Watcher is running", lambda: None, enabled=False),
-            pystray.MenuItem("Quit", on_quit)
+    """Run with tray support when available, otherwise run in headless mode."""
+    if _HAS_TRAY:
+        # Start polling in a separate thread
+        polling_thread = threading.Thread(target=poll_loop, daemon=True)
+        polling_thread.start()
+
+        # Create system tray icon
+        icon_image = create_icon_image()
+        icon = pystray.Icon(
+            "untis_watcher",
+            icon_image,
+            "Untis Watcher",
+            menu=pystray.Menu(
+                pystray.MenuItem("Untis Watcher is running", lambda: None, enabled=False),
+                pystray.MenuItem("Quit", on_quit)
+            )
         )
-    )
-    
-    # Run the icon (this blocks until quit is called)
-    icon.run()
+
+        # Run the icon (this blocks until quit is called)
+        icon.run()
+    else:
+        print("[startup] pystray/Pillow not available – running in headless mode.")
+        poll_loop()
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ A Python-based Telegram bot that monitors WebUntis for timetable changes and sen
 - Automatic Telegram notifications
 - Persistent storage to track changes across restarts
 - Continuous monitoring with configurable polling interval
-- **System tray integration** on Windows - runs silently in background
+- **Optional system tray integration** on Windows; automatically falls back to headless mode when unavailable
 
 ## Requirements
 
@@ -42,7 +42,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-**Note:** On Windows, the bot uses `pystray` to run in the system tray, which requires `Pillow`. These are already included in `requirements.txt`.
+**Note:** On Windows, the bot can use `pystray` to run in the system tray, which requires `Pillow`. If tray dependencies are unavailable (for example on headless Linux/VPS), it runs directly in terminal mode.
 
 ## Configuration
 
@@ -167,7 +167,7 @@ Or use `screen`/`tmux` to run in background (see Deployment Options below).
 
 ### Windows (System Tray - Recommended)
 
-The bot automatically runs in the system tray when started. Look for the blue circle icon in your taskbar notification area.
+If tray dependencies are available, the bot runs in the system tray when started. Look for the blue circle icon in your taskbar notification area.
 
 **To start automatically on boot:**
 
