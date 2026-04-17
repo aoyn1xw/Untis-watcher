@@ -18,13 +18,22 @@ def _lesson_sig(lesson: dict) -> dict:
     return {key: lesson.get(key) for key in COMPARE_KEYS}
 
 
+def _normalise_tt(tt: list[dict]) -> list[dict]:
+    """Return a deterministic, comparison-aligned timetable representation."""
+    return sorted(
+        [{"id": lesson.get("id"), **_lesson_sig(lesson)} for lesson in tt],
+        key=lambda lesson: lesson["id"],
+    )
+
+
 def hash_tt(tt: list[dict]) -> str:
     """
     Return an MD5 hex-digest of the serialised timetable.
     Used as a cheap equality check before doing deeper diff work.
     """
-    # Sort keys for a deterministic serialisation
-    serialised = json.dumps(tt, sort_keys=True, ensure_ascii=False)
+    # Hash the same meaningful lesson representation used for comparisons,
+    # so incidental metadata changes do not trigger false positives.
+    serialised = json.dumps(_normalise_tt(tt), sort_keys=True, ensure_ascii=False)
     return hashlib.md5(serialised.encode()).hexdigest()
 
 
