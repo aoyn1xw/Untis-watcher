@@ -84,7 +84,8 @@ def _resolve_change_type(code: str | None, subjects: list[str]) -> str:
 def fetch(session: requests.Session) -> list[dict]:
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=6)
+    # Fetch this full week plus next full week (14 total days).
+    week_end = week_start + timedelta(days=13)
 
     # Use JSON-RPC API to get timetable
     response = session.post(session._untis_url, json={
