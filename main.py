@@ -60,13 +60,15 @@ def poll_loop() -> None:
     stale_snapshot = False
 
     if last_tt:
-        latest_start = max((lesson.get("start", "") for lesson in last_tt), default="")
-        latest_lesson_date = None
-        if latest_start:
+        lesson_dates = []
+        for lesson in last_tt:
+            start = str(lesson.get("start", ""))
             try:
-                latest_lesson_date = date.fromisoformat(latest_start[:10])
+                lesson_dates.append(date.fromisoformat(start[:10]))
             except ValueError:
-                latest_lesson_date = None
+                continue
+
+        latest_lesson_date = max(lesson_dates) if lesson_dates else None
 
         if latest_lesson_date and latest_lesson_date < (date.today() - timedelta(days=3)):
             print(
