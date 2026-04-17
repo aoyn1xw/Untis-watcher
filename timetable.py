@@ -84,8 +84,8 @@ def _resolve_change_type(code: str | None, subjects: list[str]) -> str:
 
 def fetch(session: requests.Session) -> list[dict]:
     today = date.today()
-    days_to_fetch = max(DAYS_AHEAD, 1)
-    range_end = today + timedelta(days=days_to_fetch - 1)
+    days_to_fetch = max(DAYS_AHEAD, 0)
+    range_end = today + timedelta(days=days_to_fetch)
 
     # Use JSON-RPC API to get timetable
     response = session.post(session._untis_url, json={

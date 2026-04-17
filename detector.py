@@ -29,7 +29,7 @@ def _normalise_tt(tt: list[dict]) -> list[dict]:
     """Return a deterministic, comparison-aligned timetable representation."""
     return sorted(
         [{"id": _normalise_lesson_id(lesson.get("id")), **_lesson_sig(lesson)} for lesson in tt],
-        key=lambda lesson: (lesson["id"] is None, lesson["id"] or ""),
+        key=lambda lesson: lesson["id"] if lesson["id"] is not None else "",
     )
 
 
