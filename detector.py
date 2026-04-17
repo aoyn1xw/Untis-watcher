@@ -11,6 +11,8 @@ import json
 # (for example teacher/room metadata reshuffling that doesn't affect
 # the core lesson change semantics).
 COMPARE_KEYS = {"start", "end", "subjects", "code", "change_type"}
+_MISSING_ID_SORT_KEY = "\uffff__missing_lesson_id__"
+_MISSING_ID_MATCH_KEYS = {"start", "end", "subjects"}
 
 
 def _lesson_sig(lesson: dict) -> dict:
@@ -18,11 +20,51 @@ def _lesson_sig(lesson: dict) -> dict:
     return {key: lesson.get(key) for key in COMPARE_KEYS}
 
 
+def _normalise_lesson_id(lesson_id) -> str | None:
+    """Normalise lesson IDs so mixed int/str IDs map to the same key."""
+    if lesson_id is None:
+        return None
+    return str(lesson_id)
+
+
+def _missing_id_base_key(lesson: dict) -> str:
+    """
+    Build a fallback key base for lessons that have no ID.
+    Uses a stable subset so state-like fields (code/change_type) can change
+    without turning a single lesson update into remove+add.
+    """
+    sig = {key: lesson.get(key) for key in _MISSING_ID_MATCH_KEYS}
+    return f"missing:{json.dumps(sig, sort_keys=True, ensure_ascii=False)}"
+
+
+def _index_lessons_by_id(tt: list[dict]) -> dict[str, dict]:
+    """
+    Index lessons by normalised ID.
+    For missing IDs, use a deterministic fallback key plus an occurrence suffix
+    to avoid overwriting duplicate lessons with equivalent signatures.
+    """
+    indexed: dict[str, dict] = {}
+    missing_counts: dict[str, int] = {}
+
+    for lesson in tt:
+        lesson_id = _normalise_lesson_id(lesson.get("id"))
+        if lesson_id is None:
+            base_key = _missing_id_base_key(lesson)
+            occurrence = missing_counts.get(base_key, 0)
+            missing_counts[base_key] = occurrence + 1
+            key = f"{base_key}#{occurrence}"
+        else:
+            key = f"id:{lesson_id}"
+        indexed[key] = lesson
+
+    return indexed
+
+
 def _normalise_tt(tt: list[dict]) -> list[dict]:
     """Return a deterministic, comparison-aligned timetable representation."""
     return sorted(
-        [{"id": lesson.get("id"), **_lesson_sig(lesson)} for lesson in tt],
-        key=lambda lesson: lesson["id"],
+        [{"id": _normalise_lesson_id(lesson.get("id")), **_lesson_sig(lesson)} for lesson in tt],
+        key=lambda lesson: lesson["id"] if lesson["id"] is not None else _MISSING_ID_SORT_KEY,
     )
 
 
@@ -47,8 +89,8 @@ def find_changes(old: list[dict], new: list[dict]) -> list[dict]:
       - before: previous lesson state  (only for "changed")
       - after:  new lesson state        (only for "changed")
     """
-    old_by_id = {l["id"]: l for l in old}
-    new_by_id = {l["id"]: l for l in new}
+    old_by_id = _index_lessons_by_id(old)
+    new_by_id = _index_lessons_by_id(new)
 
     changes = []
 
