@@ -5,14 +5,35 @@ detector.py – Hash a timetable and find what changed between two snapshots.
 import hashlib
 import json
 
+# Only compare fields that represent meaningful timetable changes:
+# start/end time, subject list, raw code, and resolved change type.
+# This intentionally ignores incidental metadata noise from WebUntis
+# (for example teacher/room metadata reshuffling that doesn't affect
+# the core lesson change semantics).
+COMPARE_KEYS = {"start", "end", "subjects", "code", "change_type"}
+
+
+def _lesson_sig(lesson: dict) -> dict:
+    """Return only the lesson fields relevant for change detection."""
+    return {key: lesson.get(key) for key in COMPARE_KEYS}
+
+
+def _normalise_tt(tt: list[dict]) -> list[dict]:
+    """Return a deterministic, comparison-aligned timetable representation."""
+    return sorted(
+        [{"id": lesson.get("id"), **_lesson_sig(lesson)} for lesson in tt],
+        key=lambda lesson: lesson["id"],
+    )
+
 
 def hash_tt(tt: list[dict]) -> str:
     """
     Return an MD5 hex-digest of the serialised timetable.
     Used as a cheap equality check before doing deeper diff work.
     """
-    # Sort keys for a deterministic serialisation
-    serialised = json.dumps(tt, sort_keys=True, ensure_ascii=False)
+    # Hash the same meaningful lesson representation used for comparisons,
+    # so incidental metadata changes do not trigger false positives.
+    serialised = json.dumps(_normalise_tt(tt), sort_keys=True, ensure_ascii=False)
     return hashlib.md5(serialised.encode()).hexdigest()
 
 
@@ -44,13 +65,13 @@ def find_changes(old: list[dict], new: list[dict]) -> list[dict]:
     # Lessons in both → check for modifications or newly-flagged exams
     for lid in old_by_id.keys() & new_by_id.keys():
         before = old_by_id[lid]
-        after  = new_by_id[lid]
-        if before != after:
+        after = new_by_id[lid]
+        if _lesson_sig(before) != _lesson_sig(after):
             changes.append({
-                "type":   "changed",
+                "type": "changed",
                 "lesson": after,
                 "before": before,
-                "after":  after,
+                "after": after,
             })
         elif after.get("change_type") == "exam" and before.get("change_type") != "exam":
             # Exam newly flagged on this lesson – always worth notifying about

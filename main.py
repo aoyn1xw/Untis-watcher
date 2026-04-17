@@ -8,8 +8,17 @@ message whenever the timetable changes. Runs in system tray on Windows.
 import time
 import traceback
 import threading
-from PIL import Image, ImageDraw
-import pystray
+from datetime import date, timedelta
+
+try:
+    from PIL import Image, ImageDraw
+    import pystray
+    _HAS_TRAY = True
+except ImportError:
+    Image = None
+    ImageDraw = None
+    pystray = None
+    _HAS_TRAY = False
 
 import config            # imported early so missing env vars fail fast
 import storage
@@ -21,6 +30,7 @@ import notifier
 
 # Global flag to stop the polling loop
 running = True
+_STALE_SNAPSHOT_DAYS = 3
 
 
 def create_icon_image():
@@ -47,12 +57,37 @@ def poll_loop() -> None:
     print("untis-watcher starting up …")
 
     # ── Bootstrap ─────────────────────────────────────────────────────────────
-    last_tt   = storage.load() or []
+    last_tt = storage.load() or []
+    stale_snapshot = False
+
+    if last_tt:
+        lesson_dates = []
+        for lesson in last_tt:
+            start = str(lesson.get("start", ""))
+            try:
+                lesson_dates.append(date.fromisoformat(start[:10]))
+            except ValueError:
+                print(f"[startup] Ignoring lesson with invalid start date: {start!r}")
+                continue
+
+        latest_lesson_date = max(lesson_dates) if lesson_dates else None
+        # 3 days avoids noisy startup floods after longer breaks (e.g. holidays).
+        staleness_cutoff = date.today() - timedelta(days=_STALE_SNAPSHOT_DAYS)
+
+        if latest_lesson_date and latest_lesson_date < staleness_cutoff:
+            print(
+                f"[startup] Snapshot is stale (last lesson: {latest_lesson_date.isoformat()}) – resetting baseline."
+            )
+            last_tt = []
+            stale_snapshot = True
+
     last_hash = detector.hash_tt(last_tt)
     is_first_run = len(last_tt) == 0  # Track if this is the first run
 
     if last_tt:
         print(f"Loaded persisted timetable ({len(last_tt)} lessons).")
+    elif stale_snapshot:
+        print("[startup] Proceeding with a fresh baseline after stale snapshot reset.")
     else:
         print("No persisted timetable found – will treat first fetch as baseline.")
     
@@ -118,25 +153,29 @@ def on_quit(icon, item):
 
 
 def main() -> None:
-    """Set up system tray icon and start polling in background thread."""
-    # Start polling in a separate thread
-    polling_thread = threading.Thread(target=poll_loop, daemon=True)
-    polling_thread.start()
-    
-    # Create system tray icon
-    icon_image = create_icon_image()
-    icon = pystray.Icon(
-        "untis_watcher",
-        icon_image,
-        "Untis Watcher",
-        menu=pystray.Menu(
-            pystray.MenuItem("Untis Watcher is running", lambda: None, enabled=False),
-            pystray.MenuItem("Quit", on_quit)
+    """Run with tray support when available, otherwise run in headless mode."""
+    if _HAS_TRAY:
+        # Start polling in a separate thread
+        polling_thread = threading.Thread(target=poll_loop, daemon=True)
+        polling_thread.start()
+
+        # Create system tray icon
+        icon_image = create_icon_image()
+        icon = pystray.Icon(
+            "untis_watcher",
+            icon_image,
+            "Untis Watcher",
+            menu=pystray.Menu(
+                pystray.MenuItem("Untis Watcher is running", lambda: None, enabled=False),
+                pystray.MenuItem("Quit", on_quit)
+            )
         )
-    )
-    
-    # Run the icon (this blocks until quit is called)
-    icon.run()
+
+        # Run the icon (this blocks until quit is called)
+        icon.run()
+    else:
+        print("[startup] pystray/Pillow not available – running in headless mode.")
+        poll_loop()
 
 
 if __name__ == "__main__":

@@ -3,14 +3,17 @@ storage.py – Persist the last known timetable to disk so the bot survives rest
 """
 
 import json
+import os
 from pathlib import Path
 
 _FILE = Path("last_timetable.json")
 
 
 def save(tt: list[dict]) -> None:
-    """Write the timetable to disk as JSON."""
-    _FILE.write_text(json.dumps(tt, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Write the timetable to disk as JSON using an atomic file replace."""
+    temp_file = _FILE.with_suffix(".tmp.json")
+    temp_file.write_text(json.dumps(tt, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp_file, _FILE)
 
 
 def load() -> list[dict] | None:

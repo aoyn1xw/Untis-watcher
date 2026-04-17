@@ -7,11 +7,49 @@ import json
 from openai import OpenAI
 from config import GITHUB_TOKEN, AI_MODEL
 
+try:
+    from openai import (
+        APIConnectionError,
+        APIError,
+        APITimeoutError,
+        AuthenticationError,
+        RateLimitError,
+    )
+    _AI_EXCEPTIONS = (
+        APIError,
+        APIConnectionError,
+        APITimeoutError,
+        AuthenticationError,
+        RateLimitError,
+    )
+except ImportError:
+    # Fallback when exception classes differ across SDK versions.
+    _AI_EXCEPTIONS = (Exception,)
+
 # GitHub Models exposes an OpenAI-compatible REST API
 _client = OpenAI(
         base_url="https://models.github.ai/inference",
     api_key=GITHUB_TOKEN,
 )
+
+
+def _fallback_summary(changes: list[dict]) -> str:
+    """Build a plain-text summary when the AI API call fails."""
+    lines = [f"⚠️ Timetable changed ({len(changes)} change(s)):"]
+
+    for change in changes:
+        lesson = change.get("lesson", {})
+        subjects = lesson.get("subjects") or []
+        subject = subjects[0] if subjects else "Unknown subject"
+        start = lesson.get("start", "unknown time")
+        change_label = (
+            "CANCELLED"
+            if lesson.get("change_type") == "cancelled"
+            else str(change.get("type", "changed")).upper()
+        )
+        lines.append(f"• {change_label}: {subject} at {start}")
+
+    return "\n".join(lines)
 
 
 def explain(old_tt: list[dict], new_tt: list[dict], changes: list[dict]) -> str:
@@ -40,11 +78,15 @@ Changes detected:
 {changes_json}
 """
 
-    response = _client.chat.completions.create(
-        model=AI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.5,
-        max_tokens=400,
-    )
-
-    return response.choices[0].message.content.strip()
+    try:
+        response = _client.chat.completions.create(
+            model=AI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=400,
+        )
+        return response.choices[0].message.content.strip()
+    except _AI_EXCEPTIONS as exc:
+        # Known model client/API failures should degrade gracefully to plain text.
+        print(f"[ai] Model request failed, using plain-text fallback: {exc}")
+        return _fallback_summary(changes)
