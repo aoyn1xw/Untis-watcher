@@ -11,6 +11,7 @@ import json
 # (for example teacher/room metadata reshuffling that doesn't affect
 # the core lesson change semantics).
 COMPARE_KEYS = {"start", "end", "subjects", "code", "change_type"}
+_MISSING_ID_SORT_KEY = "\uffff__missing_lesson_id__"
 
 
 def _lesson_sig(lesson: dict) -> dict:
@@ -29,7 +30,7 @@ def _normalise_tt(tt: list[dict]) -> list[dict]:
     """Return a deterministic, comparison-aligned timetable representation."""
     return sorted(
         [{"id": _normalise_lesson_id(lesson.get("id")), **_lesson_sig(lesson)} for lesson in tt],
-        key=lambda lesson: lesson["id"] if lesson["id"] is not None else "",
+        key=lambda lesson: lesson["id"] if lesson["id"] is not None else _MISSING_ID_SORT_KEY,
     )
 
 

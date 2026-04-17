@@ -18,6 +18,7 @@ _EXAM_KEYWORDS = ("prüfung", "klausur", "test", "pruefung")
 _TYPE_TEACHER = 2
 _TYPE_SUBJECT = 3
 _TYPE_ROOM    = 4
+# requests timeout: (connect_timeout_seconds, read_timeout_seconds)
 _REQUEST_TIMEOUT = (10, 30)
 
 
