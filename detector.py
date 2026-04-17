@@ -26,6 +26,35 @@ def _normalise_lesson_id(lesson_id) -> str | None:
     return str(lesson_id)
 
 
+def _missing_id_base_key(lesson: dict) -> str:
+    """Build a stable fallback key base for lessons that have no ID."""
+    sig = _lesson_sig(lesson)
+    return f"missing:{json.dumps(sig, sort_keys=True, ensure_ascii=False)}"
+
+
+def _index_lessons_by_id(tt: list[dict]) -> dict[str, dict]:
+    """
+    Index lessons by normalised ID.
+    For missing IDs, use a deterministic fallback key plus an occurrence suffix
+    to avoid overwriting duplicate lessons with equivalent signatures.
+    """
+    indexed: dict[str, dict] = {}
+    missing_counts: dict[str, int] = {}
+
+    for lesson in tt:
+        lesson_id = _normalise_lesson_id(lesson.get("id"))
+        if lesson_id is None:
+            base_key = _missing_id_base_key(lesson)
+            occurrence = missing_counts.get(base_key, 0)
+            missing_counts[base_key] = occurrence + 1
+            key = f"{base_key}#{occurrence}"
+        else:
+            key = f"id:{lesson_id}"
+        indexed[key] = lesson
+
+    return indexed
+
+
 def _normalise_tt(tt: list[dict]) -> list[dict]:
     """Return a deterministic, comparison-aligned timetable representation."""
     return sorted(
@@ -55,8 +84,8 @@ def find_changes(old: list[dict], new: list[dict]) -> list[dict]:
       - before: previous lesson state  (only for "changed")
       - after:  new lesson state        (only for "changed")
     """
-    old_by_id = {_normalise_lesson_id(l.get("id")): l for l in old}
-    new_by_id = {_normalise_lesson_id(l.get("id")): l for l in new}
+    old_by_id = _index_lessons_by_id(old)
+    new_by_id = _index_lessons_by_id(new)
 
     changes = []
 
