@@ -12,6 +12,7 @@ import json
 # the core lesson change semantics).
 COMPARE_KEYS = {"start", "end", "subjects", "code", "change_type"}
 _MISSING_ID_SORT_KEY = "\uffff__missing_lesson_id__"
+_MISSING_ID_MATCH_KEYS = {"start", "end", "subjects"}
 
 
 def _lesson_sig(lesson: dict) -> dict:
@@ -27,8 +28,12 @@ def _normalise_lesson_id(lesson_id) -> str | None:
 
 
 def _missing_id_base_key(lesson: dict) -> str:
-    """Build a stable fallback key base for lessons that have no ID."""
-    sig = _lesson_sig(lesson)
+    """
+    Build a fallback key base for lessons that have no ID.
+    Uses a stable subset so state-like fields (code/change_type) can change
+    without turning a single lesson update into remove+add.
+    """
+    sig = {key: lesson.get(key) for key in _MISSING_ID_MATCH_KEYS}
     return f"missing:{json.dumps(sig, sort_keys=True, ensure_ascii=False)}"
 
 
