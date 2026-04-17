@@ -5,8 +5,11 @@ detector.py – Hash a timetable and find what changed between two snapshots.
 import hashlib
 import json
 
-# Only compare fields that represent meaningful timetable changes.
-# This intentionally ignores incidental metadata noise from WebUntis.
+# Only compare fields that represent meaningful timetable changes:
+# start/end time, subject list, raw code, and resolved change type.
+# This intentionally ignores incidental metadata noise from WebUntis
+# (for example teacher/room metadata reshuffling that doesn't affect
+# the core lesson change semantics).
 COMPARE_KEYS = {"start", "end", "subjects", "code", "change_type"}
 
 

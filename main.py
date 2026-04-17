@@ -85,7 +85,9 @@ def poll_loop() -> None:
 
     if last_tt:
         print(f"Loaded persisted timetable ({len(last_tt)} lessons).")
-    elif not stale_snapshot:
+    elif stale_snapshot:
+        print("[startup] Proceeding with a fresh baseline after stale snapshot reset.")
+    else:
         print("No persisted timetable found – will treat first fetch as baseline.")
     
     # Send startup notification
