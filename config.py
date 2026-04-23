@@ -26,6 +26,9 @@ UNTIS_USER     = os.environ["UNTIS_USER"]
 UNTIS_PASSWORD = os.environ["UNTIS_PASSWORD"]
 UNTIS_ELEMENT_TYPE = int(os.getenv("UNTIS_ELEMENT_TYPE", "5"))  # 5=class/student
 UNTIS_ELEMENT_ID   = int(os.environ["UNTIS_ELEMENT_ID"])        # your class/student ID
+UNTIS_TENANT_ID    = os.getenv("UNTIS_TENANT_ID")
+UNTIS_CLIENT_ID    = os.getenv("UNTIS_CLIENT_ID")
+UNTIS_API_PASSWORD = os.getenv("UNTIS_API_PASSWORD")
 
 # ── GitHub Models (OpenAI-compatible) ────────────────────────────────────────
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
