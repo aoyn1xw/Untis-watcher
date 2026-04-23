@@ -301,6 +301,52 @@ Untis-watcher/
 5. **Notification**: Sends the summary to your Telegram
 6. **Storage**: Saves the current timetable for next comparison
 
+## Manual CI/CD (GitHub Actions)
+
+This repository includes a manual-only workflow at `.github/workflows/manual-ci-cd.yml`.
+
+- It does **not** run on push or pull request.
+- Trigger it from GitHub: **Actions** → **Manual CI/CD** → **Run workflow**.
+- Input `run_live_untis_check`:
+  - `true`: run a live WebUntis smoke fetch using GitHub Secrets
+  - `false`: skip live API checks
+- Input `build_windows_exe`:
+  - `true`: after CI passes, build/upload `UntisWatcher.exe` as an artifact
+  - `false`: run CI stages only
+
+### CI stages (step by step)
+
+1. **CI 1/3 – Static Checks**
+   - installs dependencies
+   - compiles all core Python files with `py_compile`
+   - verifies core imports
+2. **CI 2/3 – Logic Smoke Tests**
+   - runs detector hash/diff assertions
+   - runs storage save/load roundtrip assertion
+3. **CI 3/3 – Live WebUntis Smoke Check** (optional)
+   - validates required secrets
+   - logs in via current timetable path (REST or JSON-RPC based on env)
+   - fetches timetable once and verifies lesson schema
+
+### GitHub Secrets to add
+
+Required for live WebUntis check:
+
+- `UNTIS_SERVER`
+- `UNTIS_SCHOOL`
+- `UNTIS_USER`
+- `UNTIS_PASSWORD`
+- `UNTIS_ELEMENT_ID`
+
+Optional but recommended:
+
+- `UNTIS_ELEMENT_TYPE` (defaults to `5` when omitted)
+- `UNTIS_TENANT_ID`
+- `UNTIS_CLIENT_ID`
+- `UNTIS_API_PASSWORD`
+
+The uploaded artifact appears in the workflow run summary under **Artifacts**.
+
 ## Change Types Detected
 
 - **Cancellations** (Entfall): Free periods
