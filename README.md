@@ -10,6 +10,7 @@ A Python-based Telegram bot that monitors WebUntis for timetable changes and sen
 - Automatic Telegram notifications
 - Stateful watcher with persistent `state.json` storage to avoid duplicate notifications across restarts
 - Continuous monitoring with configurable polling interval
+- **Secure error handling**: credentials and tokens are automatically scrubbed from all log output
 - **Optional system tray integration** on Windows; automatically falls back to headless mode when unavailable
 
 ## Requirements
@@ -55,9 +56,27 @@ pip install -r requirements.txt
 
 ### 2. Get Your Telegram Chat ID
 
-1. Search for `@userinfobot` or `@get_id_bot` in Telegram
-2. Start the bot and it will send you your chat ID
-3. Save this ID (looks like `5131787452`)
+The most reliable method is to use the Telegram API directly:
+
+1. Add your bot token to `.env` first (see step 5)
+2. Send any message to your bot in Telegram (e.g. "Hi")
+3. Run this in the project directory:
+
+```bash
+python -c "
+import os, requests
+for line in open('.env'):
+    line = line.strip()
+    if line and not line.startswith('#') and '=' in line:
+        k, v = line.split('=', 1)
+        os.environ[k.strip()] = v.strip()
+token = os.getenv('TELEGRAM_TOKEN')
+r = requests.get(f'https://api.telegram.org/bot{token}/getUpdates')
+print(r.json())
+"
+```
+
+4. Look for `'chat': {'id': 123456789, ...}` in the output — that number is your chat ID.
 
 ### 3. Get GitHub Token for AI Models
 
@@ -261,7 +280,17 @@ The executable will be created in the `dist/` folder. Make sure to place your `.
 
 ### Bot Can't Send Messages
 - Ensure `TELEGRAM_CHAT_ID` is your personal ID, not the bot's ID
-- Make sure you've started a chat with your bot first
+- Make sure you've started a chat with your bot first (send any message to it)
+- If you see `[WARNING] Could not send startup greeting`, your `TELEGRAM_TOKEN` is invalid — create a new bot via `@BotFather` and update `.env`
+
+### Invalid Telegram Token
+Logs will show:
+```
+[WARNING] Could not send startup greeting: The token `<TELEGRAM_TOKEN>` was rejected by the server.
+```
+Note: The actual token value is automatically redacted from logs for security. To fix:
+1. Open `@BotFather` in Telegram → `/mybots` → select your bot → `API Token`
+2. Copy the token and update `TELEGRAM_TOKEN` in `.env`
 
 ### AI Model Errors
 - Verify your GitHub token has `models:read` permissions
@@ -301,6 +330,7 @@ Untis-watcher/
 4. **Deep Comparison**: Normalizes previous and current datasets before comparing them deterministically
 5. **Notification**: Sends an AI-generated Telegram summary only when real differences exist
 6. **Storage**: Overwrites `state.json` with the latest data after a successful fetch; failed fetches keep the previous state intact
+7. **Secure Logging**: All log output automatically redacts `TELEGRAM_TOKEN`, `UNTIS_PASSWORD`, and `AI_API_KEY` to prevent credential leaks
 
 ## Manual CI/CD (GitHub Actions)
 
