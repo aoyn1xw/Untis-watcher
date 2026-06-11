@@ -30,9 +30,22 @@ UNTIS_TENANT_ID    = os.getenv("UNTIS_TENANT_ID")
 UNTIS_CLIENT_ID    = os.getenv("UNTIS_CLIENT_ID")
 UNTIS_API_PASSWORD = os.getenv("UNTIS_API_PASSWORD")
 
-# ── GitHub Models (OpenAI-compatible) ────────────────────────────────────────
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-AI_MODEL     = os.getenv("AI_MODEL", "gpt-4o-mini")
+# ── AI / OpenAI-compatible endpoint ──────────────────────────────────────────
+# AI_API_KEY:  your API key for the chosen endpoint.
+#              Falls back to GITHUB_TOKEN for backwards compatibility with the
+#              old GitHub Models setup.
+# AI_BASE_URL: optional custom base URL for any OpenAI-compatible endpoint.
+#              Leave unset to use the default OpenAI API (api.openai.com).
+#
+# Examples:
+#   OpenAI:          AI_API_KEY=sk-...          (no AI_BASE_URL needed)
+#   GitHub Models:   AI_API_KEY=<github token>  AI_BASE_URL=https://models.github.ai/inference
+#   LM Studio:       AI_API_KEY=lm-studio       AI_BASE_URL=http://localhost:1234/v1
+#   Ollama:          AI_API_KEY=ollama          AI_BASE_URL=http://localhost:11434/v1
+#   Together AI:     AI_API_KEY=<together key>  AI_BASE_URL=https://api.together.xyz/v1
+AI_API_KEY  = os.getenv("AI_API_KEY") or os.getenv("GITHUB_TOKEN", "")
+AI_BASE_URL = os.getenv("AI_BASE_URL")   # None = use OpenAI default
+AI_MODEL    = os.getenv("AI_MODEL", "gpt-4o-mini")
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
 TELEGRAM_TOKEN   = os.environ["TELEGRAM_TOKEN"]
