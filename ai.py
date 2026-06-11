@@ -86,7 +86,6 @@ Changes detected:
         response = _client.chat.completions.create(
             model=AI_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
             max_completion_tokens=400,
         )
         return response.choices[0].message.content.strip()
