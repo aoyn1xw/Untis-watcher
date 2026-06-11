@@ -7,6 +7,7 @@ environment variables defined in config.py.
 """
 
 import json
+from datetime import datetime
 from openai import OpenAI
 from config import AI_API_KEY, AI_BASE_URL, AI_MODEL
 
@@ -26,11 +27,8 @@ try:
         RateLimitError,
     )
 except ImportError:
-    # Fallback when exception classes differ across SDK versions.
     _AI_EXCEPTIONS = (Exception,)
 
-# Build client kwargs – only pass base_url when explicitly configured so the
-# default SDK endpoint (api.openai.com) is used when AI_BASE_URL is unset.
 _client_kwargs: dict = {"api_key": AI_API_KEY}
 if AI_BASE_URL:
     _client_kwargs["base_url"] = AI_BASE_URL
@@ -38,21 +36,91 @@ if AI_BASE_URL:
 _client = OpenAI(**_client_kwargs)
 
 
+def _fmt_time(iso: str | None) -> str:
+    """Convert ISO timestamp to HH:MM, e.g. '2026-06-08T08:20' -> '08:20'."""
+    if not iso:
+        return "?"
+    try:
+        return datetime.fromisoformat(iso).strftime("%H:%M")
+    except ValueError:
+        return str(iso)
+
+
+def _get_subject(lesson: dict) -> str:
+    subjects = lesson.get("subjects") or []
+    if subjects and isinstance(subjects[0], dict):
+        return subjects[0].get("name") or subjects[0].get("longname") or "Unknown"
+    if subjects and isinstance(subjects[0], str):
+        return subjects[0]
+    return "Unknown subject"
+
+
+def _get_room(lesson: dict) -> str:
+    rooms = lesson.get("rooms") or []
+    if rooms and isinstance(rooms[0], dict):
+        return rooms[0].get("name") or rooms[0].get("longname") or "?"
+    if rooms and isinstance(rooms[0], str):
+        return rooms[0]
+    return "?"
+
+
+def _get_teacher(lesson: dict) -> str:
+    teachers = lesson.get("teachers") or []
+    if teachers and isinstance(teachers[0], dict):
+        return teachers[0].get("name") or teachers[0].get("longname") or "?"
+    if teachers and isinstance(teachers[0], str):
+        return teachers[0]
+    return "?"
+
+
 def _fallback_summary(changes: list[dict]) -> str:
-    """Build a plain-text summary when the AI API call fails or returns empty."""
+    """Build a readable plain-text summary when the AI call fails or returns empty."""
     lines = [f"\u26a0\ufe0f Timetable changed ({len(changes)} change(s)):"]
 
     for change in changes:
-        lesson = change.get("lesson", {})
-        subjects = lesson.get("subjects") or []
-        subject = subjects[0] if subjects else "Unknown subject"
-        start = lesson.get("start", "unknown time")
-        change_label = (
-            "CANCELLED"
-            if lesson.get("change_type") == "cancelled"
-            else str(change.get("type", "changed")).upper()
-        )
-        lines.append(f"\u2022 {change_label}: {subject} at {start}")
+        change_type = change.get("type", "changed")
+        lesson = change.get("lesson") or change.get("after") or {}
+        before = change.get("before") or {}
+
+        subject = _get_subject(lesson)
+        time = _fmt_time(lesson.get("start"))
+
+        if change_type == "added":
+            room = _get_room(lesson)
+            lines.append(f"\u2795 ADDED: {subject} at {time} in {room}")
+
+        elif change_type == "removed":
+            lines.append(f"\ud83d\udd3a CANCELLED: {subject} at {time} — free period!")
+
+        elif change_type == "exam":
+            room = _get_room(lesson)
+            lines.append(f"\ud83d\udfe1 EXAM: {subject} at {time} in {room}")
+
+        elif change_type == "changed":
+            # Show what actually changed between before and after
+            details = []
+            after = change.get("after") or lesson
+
+            old_room = _get_room(before)
+            new_room = _get_room(after)
+            if old_room != new_room:
+                details.append(f"room {old_room} \u2192 {new_room}")
+
+            old_teacher = _get_teacher(before)
+            new_teacher = _get_teacher(after)
+            if old_teacher != new_teacher:
+                details.append(f"teacher {old_teacher} \u2192 {new_teacher}")
+
+            old_time = _fmt_time(before.get("start"))
+            new_time = _fmt_time(after.get("start"))
+            if old_time != new_time:
+                details.append(f"time {old_time} \u2192 {new_time}")
+
+            detail_str = ", ".join(details) if details else "details changed"
+            lines.append(f"\ud83d� CHANGED: {subject} at {time} ({detail_str})")
+
+        else:
+            lines.append(f"\u2022 {change_type.upper()}: {subject} at {time}")
 
     return "\n".join(lines)
 
@@ -60,8 +128,8 @@ def _fallback_summary(changes: list[dict]) -> str:
 def explain(old_tt: list[dict], new_tt: list[dict], changes: list[dict]) -> str:
     """
     Ask the AI model to summarise the detected changes in plain language.
-    The full changes list is passed as JSON so the model can reason precisely.
-    Returns the model's reply as a string.
+    Falls back to a structured plain-text summary if the model fails or
+    returns an empty response.
     """
     changes_json = json.dumps(changes, ensure_ascii=False, indent=2)
 
