@@ -42,6 +42,15 @@ if AI_BASE_URL:
 
 _client = OpenAI(**_client_kwargs)
 
+# Emoji constants (proper Unicode codepoints, not surrogate pairs)
+_EMOJI_WARNING   = "\u26a0\ufe0f"   # ⚠️
+_EMOJI_ADDED     = "\u2795"         # ➕
+_EMOJI_CANCELLED = "\U0001f53a"     # 🔺
+_EMOJI_EXAM      = "\U0001f7e1"     # 🟡
+_EMOJI_CHANGED   = "\U0001f7e2"     # 🟢
+_EMOJI_BULLET    = "\u2022"         # •
+_ARROW           = "\u2192"         # →
+
 
 def _fmt_time(iso: str | None) -> str:
     """Convert ISO timestamp to HH:MM, e.g. '2026-06-08T08:20' -> '08:20'."""
@@ -85,7 +94,7 @@ def _structured_summary(changes: list[dict]) -> str:
     Build a readable plain-text summary directly from raw Untis change data.
     Used when AI is disabled or when the model call fails / returns empty.
     """
-    lines = [f"\u26a0\ufe0f Timetable changed ({len(changes)} change(s)):"]
+    lines = [f"{_EMOJI_WARNING} Timetable changed ({len(changes)} change(s)):"]
 
     for change in changes:
         change_type = change.get("type", "changed")
@@ -98,15 +107,15 @@ def _structured_summary(changes: list[dict]) -> str:
         if change_type == "added":
             room = _get_room(lesson)
             teacher = _get_teacher(lesson)
-            lines.append(f"\u2795 ADDED: {subject} at {time} — {teacher}, room {room}")
+            lines.append(f"{_EMOJI_ADDED} ADDED: {subject} at {time} — {teacher}, room {room}")
 
         elif change_type == "removed":
-            lines.append(f"\ud83d\udd3a CANCELLED: {subject} at {time} — free period!")
+            lines.append(f"{_EMOJI_CANCELLED} CANCELLED: {subject} at {time} — free period!")
 
         elif change_type == "exam":
             room = _get_room(lesson)
             teacher = _get_teacher(lesson)
-            lines.append(f"\ud83d\udfe1 EXAM: {subject} at {time} — {teacher}, room {room}")
+            lines.append(f"{_EMOJI_EXAM} EXAM: {subject} at {time} — {teacher}, room {room}")
 
         elif change_type == "changed":
             after = change.get("after") or lesson
@@ -115,23 +124,23 @@ def _structured_summary(changes: list[dict]) -> str:
             old_room = _get_room(before)
             new_room = _get_room(after)
             if old_room != new_room:
-                details.append(f"room {old_room} \u2192 {new_room}")
+                details.append(f"room {old_room} {_ARROW} {new_room}")
 
             old_teacher = _get_teacher(before)
             new_teacher = _get_teacher(after)
             if old_teacher != new_teacher:
-                details.append(f"teacher {old_teacher} \u2192 {new_teacher}")
+                details.append(f"teacher {old_teacher} {_ARROW} {new_teacher}")
 
             old_time = _fmt_time(before.get("start"))
             new_time = _fmt_time(after.get("start"))
             if old_time != new_time:
-                details.append(f"time {old_time} \u2192 {new_time}")
+                details.append(f"time {old_time} {_ARROW} {new_time}")
 
             detail_str = ", ".join(details) if details else "details updated"
-            lines.append(f"\ud83d\udfe2 CHANGED: {subject} at {time} ({detail_str})")
+            lines.append(f"{_EMOJI_CHANGED} CHANGED: {subject} at {time} ({detail_str})")
 
         else:
-            lines.append(f"\u2022 {change_type.upper()}: {subject} at {time}")
+            lines.append(f"{_EMOJI_BULLET} {change_type.upper()}: {subject} at {time}")
 
     return "\n".join(lines)
 
@@ -157,9 +166,9 @@ Gesamtschule Uellendahl/Katernberg in Germany.
 
 Explain the timetable changes in friendly, clear English.
 Follow these rules:
-- \"cancelled\" (Entfall \U0001f53a): tell Erdi he has a free period
-- \"irregular\" (\u00c4nderung \U0001f7e2): explain exactly what changed (room, teacher, or time)
-- Exams (Pr\u00fcfung \U0001f7e1): always mention these FIRST, they are important
+- \"cancelled\" (Entfall {_EMOJI_CANCELLED}): tell Erdi he has a free period
+- \"irregular\" (\u00c4nderung {_EMOJI_CHANGED}): explain exactly what changed (room, teacher, or time)
+- Exams (Pr\u00fcfung {_EMOJI_EXAM}): always mention these FIRST, they are important
 - Be specific: always include subject name, teacher code, time, and room
 - Keep the summary to 3-5 sentences max
 - If multiple things changed, use a short numbered list inside the message
