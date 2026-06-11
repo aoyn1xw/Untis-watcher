@@ -49,6 +49,24 @@ class LoginFailedError(ConnectionError):
     """Raised when WebUntis login fails after the retry attempt."""
 
 
+def _sanitize_error(exc: Exception) -> str:
+    """
+    Return a safe string representation of an exception.
+    Replaces any occurrence of sensitive config values (tokens, passwords)
+    with redacted placeholders so they never appear in logs.
+    """
+    msg = str(exc)
+    sensitive = [
+        (config.TELEGRAM_TOKEN, "<TELEGRAM_TOKEN>"),
+        (config.UNTIS_PASSWORD, "<UNTIS_PASSWORD>"),
+        (config.AI_API_KEY,     "<AI_API_KEY>"),
+    ]
+    for secret, placeholder in sensitive:
+        if secret and secret in msg:
+            msg = msg.replace(secret, placeholder)
+    return msg
+
+
 def create_icon_image():
     """Create a simple icon for the system tray."""
     from PIL import Image, ImageDraw
@@ -69,8 +87,8 @@ def _send_startup_greeting() -> None:
     try:
         notifier.send("Watcher started. I'm now keeping an eye on your timetable.")
         logger.info("Startup greeting sent via Telegram.")
-    except Exception:
-        logger.warning("Could not send startup greeting – Telegram may be unavailable.", exc_info=True)
+    except Exception as exc:
+        logger.warning("Could not send startup greeting: %s", _sanitize_error(exc))
 
 
 def _load_previous_timetable() -> list[dict]:
@@ -100,7 +118,7 @@ def _login_with_retry() -> object:
             return session
         except Exception as exc:
             last_error = exc
-            logger.warning("Login failed on attempt %s/2: %s", attempt, exc)
+            logger.warning("Login failed on attempt %s/2: %s", attempt, _sanitize_error(exc))
             if attempt == 1:
                 time.sleep(2)
 
@@ -127,8 +145,8 @@ def _notify_changes(previous_timetable: list[dict], current_timetable: list[dict
     try:
         notifier.send(summary)
         logger.info("Telegram notification sent.")
-    except Exception:
-        logger.exception("Notification failed; continuing to persist latest fetched state.")
+    except Exception as exc:
+        logger.error("Notification failed: %s", _sanitize_error(exc))
 
 
 def _process_once(previous_timetable: list[dict]) -> list[dict]:
