@@ -39,7 +39,7 @@ _client = OpenAI(**_client_kwargs)
 
 
 def _fallback_summary(changes: list[dict]) -> str:
-    """Build a plain-text summary when the AI API call fails."""
+    """Build a plain-text summary when the AI API call fails or returns empty."""
     lines = [f"\u26a0\ufe0f Timetable changed ({len(changes)} change(s)):"]
 
     for change in changes:
@@ -88,7 +88,11 @@ Changes detected:
             messages=[{"role": "user", "content": prompt}],
             max_completion_tokens=400,
         )
-        return response.choices[0].message.content.strip()
+        content = (response.choices[0].message.content or "").strip()
+        if not content:
+            print("[ai] Model returned empty response, using plain-text fallback.")
+            return _fallback_summary(changes)
+        return content
     except _AI_EXCEPTIONS as exc:
         print(f"[ai] Model request failed, using plain-text fallback: {exc}")
         return _fallback_summary(changes)
