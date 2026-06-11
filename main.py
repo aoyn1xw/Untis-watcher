@@ -64,6 +64,17 @@ def create_icon_image():
     return image
 
 
+def _send_startup_greeting() -> None:
+    """Send a friendly startup message to Telegram. Failures are non-fatal."""
+    try:
+        notifier.send(
+            "Hey Erdi! \U0001f440 I'm now watching your timetable and will let you know as soon as anything changes. \U0001f4cb"
+        )
+        logger.info("Startup greeting sent via Telegram.")
+    except Exception:
+        logger.warning("Could not send startup greeting – Telegram may be unavailable.", exc_info=True)
+
+
 def _load_previous_timetable() -> list[dict]:
     """Load the previous persisted state from state.json, if it exists."""
     state = storage.load_state()
@@ -158,6 +169,7 @@ def poll_loop() -> None:
     global running
 
     logger.info("untis-watcher starting up …")
+    _send_startup_greeting()
     previous_timetable = _load_previous_timetable()
 
     while running:
