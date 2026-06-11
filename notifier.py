@@ -23,12 +23,8 @@ def send(text: str) -> None:
     Per-item emojis (🔺 cancelled, 🟢 changed, 🟡 exam) are included
     by the AI in its output, so no further prefix logic is needed here.
     """
+    if not text or not text.strip():
+        return
+
     full_text = f"📅 {text}"
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(_send_async(full_text))
-        else:
-            asyncio.run(_send_async(full_text))
-    except RuntimeError:
-        asyncio.run(_send_async(full_text))
+    asyncio.run(_send_async(full_text))
