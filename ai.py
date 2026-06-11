@@ -87,7 +87,7 @@ Changes detected:
             model=AI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=400,
+            max_completion_tokens=400,
         )
         return response.choices[0].message.content.strip()
     except _AI_EXCEPTIONS as exc:
