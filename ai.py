@@ -36,7 +36,10 @@ try:
 except ImportError:
     _AI_EXCEPTIONS = (Exception,)
 
-_client_kwargs: dict = {"api_key": AI_API_KEY}
+_client_kwargs: dict = {
+    "api_key": AI_API_KEY,
+    "timeout": 30.0,   # never hang longer than 30s
+}
 if AI_BASE_URL:
     _client_kwargs["base_url"] = AI_BASE_URL
 
@@ -182,7 +185,7 @@ Changes detected:
         response = _client.chat.completions.create(
             model=AI_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            max_completion_tokens=400,
+            max_tokens=400,
         )
         content = (response.choices[0].message.content or "").strip()
         if not content:
