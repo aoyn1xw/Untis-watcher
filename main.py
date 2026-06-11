@@ -29,6 +29,7 @@ _HAS_TRAY = _tray_dependencies_available()
 import config            # imported early so missing env vars fail fast
 import ai
 import detector
+import health
 import notifier
 import storage
 import timetable
@@ -43,6 +44,15 @@ logger = logging.getLogger("untis-watcher")
 
 # Global flag to stop the polling loop
 running = True
+
+# Health monitor – single instance for the process lifetime
+_health = health.HealthMonitor(
+    failure_threshold=getattr(config, "FAILURE_ALERT_THRESHOLD", 3),
+    heartbeat_interval_s=getattr(config, "HEARTBEAT_INTERVAL", 0),
+)
+
+# Watchdog fires if no successful cycle for 3× the poll interval
+_WATCHDOG_MULTIPLIER = 3
 
 
 class LoginFailedError(ConnectionError):
@@ -149,9 +159,11 @@ def _notify_changes(previous_timetable: list[dict], current_timetable: list[dict
         logger.error("Notification failed: %s", _sanitize_error(exc))
 
 
-def _process_once(previous_timetable: list[dict]) -> list[dict]:
+def _process_once(previous_timetable: list[dict]) -> tuple[list[dict], str, int]:
     """
     Run one stateful watcher cycle.
+
+    Returns (new_timetable, outcome, change_count) for health recording.
 
     The state file is overwritten only after a successful fetch. Fetch failures
     leave the previous state on disk untouched so failed polls do not cause false
@@ -166,18 +178,25 @@ def _process_once(previous_timetable: list[dict]) -> list[dict]:
     previous_normalised = detector.normalise_timetable(previous_timetable)
     current_normalised = detector.normalise_timetable(current_timetable)
 
+    outcome: str = "ok"
+    change_count: int = 0
+
     if not previous_normalised:
         logger.info("No previous timetable baseline; saving current state without notification.")
+        outcome = "ok"
     elif previous_normalised != current_normalised:
         changes = detector.find_changes(previous_timetable, current_timetable)
-        logger.info("Diff detected with %s change(s): %s", len(changes), ", ".join(c["type"] for c in changes))
+        change_count = len(changes)
+        logger.info("Diff detected with %s change(s): %s", change_count, ", ".join(c["type"] for c in changes))
         _notify_changes(previous_timetable, current_timetable, changes)
+        outcome = "changed"
     else:
         logger.info("No change detected; normalised timetable matches persisted state.")
+        outcome = "no_change"
 
     storage.save_state(current_timetable)
     logger.info("state.json overwritten with latest fetched data.")
-    return current_timetable
+    return current_timetable, outcome, change_count
 
 
 def poll_loop() -> None:
@@ -189,14 +208,48 @@ def poll_loop() -> None:
     previous_timetable = _load_previous_timetable()
 
     while running:
+        cycle_start = time.time()
+        outcome: str = "unknown_error"
+        change_count: int = 0
+        error_str: str = ""
+
         try:
-            previous_timetable = _process_once(previous_timetable)
-        except LoginFailedError:
+            previous_timetable, outcome, change_count = _process_once(previous_timetable)
+        except LoginFailedError as exc:
+            error_str = _sanitize_error(exc)
+            outcome = "login_error"
             logger.exception("Login failed after retry; exiting watcher.")
+            _health.record_cycle(
+                outcome=outcome,
+                latency_s=time.time() - cycle_start,
+                error=error_str,
+                send_alert_fn=notifier.send,
+            )
             running = False
             break
-        except Exception:
+        except Exception as exc:
+            error_str = _sanitize_error(exc)
+            outcome = "fetch_error"
             logger.exception("Unexpected error during watcher cycle; state.json was not overwritten.")
+        finally:
+            latency = time.time() - cycle_start
+            if outcome not in ("login_error",):   # login_error already recorded above
+                _health.record_cycle(
+                    outcome=outcome,
+                    latency_s=latency,
+                    change_count=change_count,
+                    error=error_str,
+                    send_alert_fn=notifier.send,
+                )
+
+        # Watchdog: alert if silent for 3× the poll interval
+        _health.check_watchdog(
+            silence_threshold_s=_WATCHDOG_MULTIPLIER * config.POLL_INTERVAL,
+            send_alert_fn=notifier.send,
+        )
+
+        # Heartbeat: periodic "still alive" ping (disabled by default)
+        _health.maybe_send_heartbeat(send_fn=notifier.send)
 
         for _ in range(config.POLL_INTERVAL):
             if not running:
