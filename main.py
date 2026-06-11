@@ -1,11 +1,15 @@
 """
 main.py – Entry point for the untis-watcher bot.
 
-Polls WebUntis every POLL_INTERVAL seconds and sends an AI-generated Telegram
+Polls WebUntis every POLL_INTERVAL seconds and sends a Telegram
 message whenever the persisted timetable state changes. Runs in the system tray
 on Windows when tray dependencies are available.
+
+Pass --test to send a single fake change notification and exit immediately.
+Useful for verifying that Telegram notifications are working correctly.
 """
 
+import argparse
 import importlib.util
 import logging
 import os
@@ -15,7 +19,6 @@ import time
 
 
 def _tray_dependencies_available() -> bool:
-    """Return whether system-tray dependencies and a GUI session appear available."""
     has_dependencies = (
         importlib.util.find_spec("PIL") is not None
         and importlib.util.find_spec("pystray") is not None
@@ -26,7 +29,7 @@ def _tray_dependencies_available() -> bool:
 
 _HAS_TRAY = _tray_dependencies_available()
 
-import config            # imported early so missing env vars fail fast
+import config
 import ai
 import detector
 import health
@@ -42,29 +45,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger("untis-watcher")
 
-# Global flag to stop the polling loop
 running = True
 
-# Health monitor – single instance for the process lifetime
 _health = health.HealthMonitor(
     failure_threshold=getattr(config, "FAILURE_ALERT_THRESHOLD", 3),
     heartbeat_interval_s=getattr(config, "HEARTBEAT_INTERVAL", 0),
 )
 
-# Watchdog fires if no successful cycle for 3× the poll interval
 _WATCHDOG_MULTIPLIER = 3
 
 
 class LoginFailedError(ConnectionError):
-    """Raised when WebUntis login fails after the retry attempt."""
+    pass
 
 
 def _sanitize_error(exc: Exception) -> str:
-    """
-    Return a safe string representation of an exception.
-    Replaces any occurrence of sensitive config values (tokens, passwords)
-    with redacted placeholders so they never appear in logs.
-    """
     msg = str(exc)
     sensitive = [
         (config.TELEGRAM_TOKEN, "<TELEGRAM_TOKEN>"),
@@ -78,22 +73,17 @@ def _sanitize_error(exc: Exception) -> str:
 
 
 def create_icon_image():
-    """Create a simple icon for the system tray."""
     from PIL import Image, ImageDraw
-
     width = 64
     height = 64
     image = Image.new('RGB', (width, height), 'white')
     draw = ImageDraw.Draw(image)
-
     draw.ellipse([8, 8, 56, 56], fill='#0088cc', outline='#005580')
     draw.ellipse([44, 12, 52, 20], fill='#00ff00')
-
     return image
 
 
 def _send_startup_greeting() -> None:
-    """Send a startup message to Telegram. Failures are non-fatal."""
     try:
         notifier.send("Watcher started. I'm now keeping an eye on your timetable.")
         logger.info("Startup greeting sent via Telegram.")
@@ -102,24 +92,20 @@ def _send_startup_greeting() -> None:
 
 
 def _load_previous_timetable() -> list[dict]:
-    """Load the previous persisted state from state.json, if it exists."""
     state = storage.load_state()
     if not state:
         logger.info("No state.json found; first successful fetch will become the baseline.")
         return []
-
     previous_timetable = state.get("timetable")
     if not isinstance(previous_timetable, list):
         logger.warning("state.json did not contain a timetable list; starting with an empty baseline.")
         return []
-
     normalised_count = len(detector.normalise_timetable(previous_timetable))
     logger.info("Loaded state.json baseline with %s normalised lesson(s).", normalised_count)
     return previous_timetable
 
 
 def _login_with_retry() -> object:
-    """Log in to WebUntis, retrying once before surfacing a fatal login error."""
     last_error: Exception | None = None
     for attempt in range(1, 3):
         try:
@@ -131,27 +117,22 @@ def _login_with_retry() -> object:
             logger.warning("Login failed on attempt %s/2: %s", attempt, _sanitize_error(exc))
             if attempt == 1:
                 time.sleep(2)
-
     raise LoginFailedError("WebUntis login failed after 2 attempts.") from last_error
 
 
 def _fetch_current_timetable(session: object) -> list[dict]:
-    """Fetch the latest WebUntis timetable and log the result."""
     try:
         current_timetable = timetable.fetch(session)
     except Exception:
         logger.exception("Fetch failed; state.json will not be overwritten.")
         raise
-
     logger.info("Fetch successful with %s lesson(s).", len(current_timetable))
     return current_timetable
 
 
 def _notify_changes(previous_timetable: list[dict], current_timetable: list[dict], changes: list[dict]) -> None:
-    """Generate and send the existing timetable-change notification."""
     summary = ai.explain(previous_timetable, current_timetable, changes)
-    logger.info("AI summary generated: %s%s", summary[:80], "…" if len(summary) > 80 else "")
-
+    logger.info("Summary generated: %s%s", summary[:80], "…" if len(summary) > 80 else "")
     try:
         notifier.send(summary)
         logger.info("Telegram notification sent.")
@@ -160,15 +141,6 @@ def _notify_changes(previous_timetable: list[dict], current_timetable: list[dict
 
 
 def _process_once(previous_timetable: list[dict]) -> tuple[list[dict], str, int]:
-    """
-    Run one stateful watcher cycle.
-
-    Returns (new_timetable, outcome, change_count) for health recording.
-
-    The state file is overwritten only after a successful fetch. Fetch failures
-    leave the previous state on disk untouched so failed polls do not cause false
-    positives or duplicate notifications on the next run.
-    """
     session = _login_with_retry()
     try:
         current_timetable = _fetch_current_timetable(session)
@@ -183,7 +155,6 @@ def _process_once(previous_timetable: list[dict]) -> tuple[list[dict], str, int]
 
     if not previous_normalised:
         logger.info("No previous timetable baseline; saving current state without notification.")
-        outcome = "ok"
     elif previous_normalised != current_normalised:
         changes = detector.find_changes(previous_timetable, current_timetable)
         change_count = len(changes)
@@ -199,8 +170,58 @@ def _process_once(previous_timetable: list[dict]) -> tuple[list[dict], str, int]
     return current_timetable, outcome, change_count
 
 
+def run_test_notification() -> None:
+    """
+    Send a single fake change notification to Telegram and exit.
+    Uses a realistic fake lesson so the full notification pipeline is exercised.
+    """
+    logger.info("[test] Sending fake change notification...")
+
+    fake_before = {
+        "id": 9999999,
+        "start": "2026-06-12T08:20",
+        "end": "2026-06-12T09:05",
+        "subjects": ["Mathematik"],
+        "teachers": ["JOOS"],
+        "rooms": ["B209"],
+        "code": None,
+        "change_type": "normal",
+    }
+    fake_after = {
+        **fake_before,
+        "rooms": ["A101"],
+        "code": "irregular",
+        "change_type": "changed",
+    }
+    fake_changes = [
+        {
+            "type": "changed",
+            "lesson": fake_after,
+            "before": fake_before,
+            "after": fake_after,
+        },
+        {
+            "type": "removed",
+            "lesson": {
+                "id": 9999998,
+                "start": "2026-06-12T10:05",
+                "end": "2026-06-12T10:50",
+                "subjects": ["Deutsch"],
+                "teachers": ["MULL"],
+                "rooms": ["C312"],
+                "code": "cancelled",
+                "change_type": "cancelled",
+            },
+        },
+    ]
+
+    summary = ai.explain([], [], fake_changes)
+    logger.info("[test] Summary: %s", summary)
+    notifier.send("[TEST] " + summary)
+    logger.info("[test] Notification sent. Check your Telegram.")
+
+
 def poll_loop() -> None:
-    """Main watcher loop that checks for timetable changes against state.json."""
     global running
 
     logger.info("untis-watcher starting up …")
@@ -233,7 +254,7 @@ def poll_loop() -> None:
             logger.exception("Unexpected error during watcher cycle; state.json was not overwritten.")
         finally:
             latency = time.time() - cycle_start
-            if outcome not in ("login_error",):   # login_error already recorded above
+            if outcome not in ("login_error",):
                 _health.record_cycle(
                     outcome=outcome,
                     latency_s=latency,
@@ -242,13 +263,10 @@ def poll_loop() -> None:
                     send_alert_fn=notifier.send,
                 )
 
-        # Watchdog: alert if silent for 3× the poll interval
         _health.check_watchdog(
             silence_threshold_s=_WATCHDOG_MULTIPLIER * config.POLL_INTERVAL,
             send_alert_fn=notifier.send,
         )
-
-        # Heartbeat: periodic "still alive" ping (disabled by default)
         _health.maybe_send_heartbeat(send_fn=notifier.send)
 
         for _ in range(config.POLL_INTERVAL):
@@ -260,20 +278,28 @@ def poll_loop() -> None:
 
 
 def on_quit(icon, item):
-    """Handle quit action from system tray."""
     global running
     running = False
     icon.stop()
 
 
 def main() -> None:
-    """Run with tray support when available, otherwise run in headless mode."""
+    parser = argparse.ArgumentParser(description="Untis Watcher")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Send a fake change notification to Telegram and exit.",
+    )
+    args = parser.parse_args()
+
+    if args.test:
+        run_test_notification()
+        return
+
     if _HAS_TRAY:
         import pystray
-
         polling_thread = threading.Thread(target=poll_loop, daemon=True)
         polling_thread.start()
-
         icon_image = create_icon_image()
         icon = pystray.Icon(
             "untis_watcher",
@@ -284,7 +310,6 @@ def main() -> None:
                 pystray.MenuItem("Quit", on_quit)
             )
         )
-
         icon.run()
     else:
         logger.info("pystray/Pillow not available – running in headless mode.")
