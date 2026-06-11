@@ -2,147 +2,180 @@
 main.py – Entry point for the untis-watcher bot.
 
 Polls WebUntis every POLL_INTERVAL seconds and sends an AI-generated Telegram
-message whenever the timetable changes. Runs in system tray on Windows.
+message whenever the persisted timetable state changes. Runs in the system tray
+on Windows when tray dependencies are available.
 """
 
-import time
-import traceback
+import importlib.util
+import logging
+import os
+import platform
 import threading
-from datetime import date, timedelta
+import time
 
-try:
-    from PIL import Image, ImageDraw
-    import pystray
-    _HAS_TRAY = True
-except ImportError:
-    Image = None
-    ImageDraw = None
-    pystray = None
-    _HAS_TRAY = False
+
+def _tray_dependencies_available() -> bool:
+    """Return whether system-tray dependencies and a GUI session appear available."""
+    has_dependencies = (
+        importlib.util.find_spec("PIL") is not None
+        and importlib.util.find_spec("pystray") is not None
+    )
+    has_gui_session = platform.system() == "Windows" or bool(os.environ.get("DISPLAY"))
+    return has_dependencies and has_gui_session
+
+
+_HAS_TRAY = _tray_dependencies_available()
 
 import config            # imported early so missing env vars fail fast
+import ai
+import detector
+import notifier
 import storage
 import timetable
-import detector
-import ai
-import notifier
 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("untis-watcher")
 
 # Global flag to stop the polling loop
 running = True
-_STALE_SNAPSHOT_DAYS = 3
+
+
+class LoginFailedError(ConnectionError):
+    """Raised when WebUntis login fails after the retry attempt."""
 
 
 def create_icon_image():
     """Create a simple icon for the system tray."""
-    # Create a 64x64 image with a blue circle
+    from PIL import Image, ImageDraw
+
     width = 64
     height = 64
     image = Image.new('RGB', (width, height), 'white')
     draw = ImageDraw.Draw(image)
-    
-    # Draw a circle representing the bot
+
     draw.ellipse([8, 8, 56, 56], fill='#0088cc', outline='#005580')
-    
-    # Draw a small indicator dot
     draw.ellipse([44, 12, 52, 20], fill='#00ff00')
-    
+
     return image
 
 
-def poll_loop() -> None:
-    """Main polling loop that checks for timetable changes."""
-    global running
-    
-    print("untis-watcher starting up …")
+def _load_previous_timetable() -> list[dict]:
+    """Load the previous persisted state from state.json, if it exists."""
+    state = storage.load_state()
+    if not state:
+        logger.info("No state.json found; first successful fetch will become the baseline.")
+        return []
 
-    # ── Bootstrap ─────────────────────────────────────────────────────────────
-    last_tt = storage.load() or []
-    stale_snapshot = False
+    previous_timetable = state.get("timetable")
+    if not isinstance(previous_timetable, list):
+        logger.warning("state.json did not contain a timetable list; starting with an empty baseline.")
+        return []
 
-    if last_tt:
-        lesson_dates = []
-        for lesson in last_tt:
-            start = str(lesson.get("start", ""))
-            try:
-                lesson_dates.append(date.fromisoformat(start[:10]))
-            except ValueError:
-                print(f"[startup] Ignoring lesson with invalid start date: {start!r}")
-                continue
+    normalised_count = len(detector.normalise_timetable(previous_timetable))
+    logger.info("Loaded state.json baseline with %s normalised lesson(s).", normalised_count)
+    return previous_timetable
 
-        latest_lesson_date = max(lesson_dates) if lesson_dates else None
-        # 3 days avoids noisy startup floods after longer breaks (e.g. holidays).
-        staleness_cutoff = date.today() - timedelta(days=_STALE_SNAPSHOT_DAYS)
 
-        if latest_lesson_date and latest_lesson_date < staleness_cutoff:
-            print(
-                f"[startup] Snapshot is stale (last lesson: {latest_lesson_date.isoformat()}) – resetting baseline."
-            )
-            last_tt = []
-            stale_snapshot = True
-
-    last_hash = detector.hash_tt(last_tt)
-    is_first_run = len(last_tt) == 0  # Track if this is the first run
-
-    if last_tt:
-        print(f"Loaded persisted timetable ({len(last_tt)} lessons).")
-    elif stale_snapshot:
-        print("[startup] Proceeding with a fresh baseline after stale snapshot reset.")
-    else:
-        print("No persisted timetable found – will treat first fetch as baseline.")
-    
-    # Send startup notification
-    try:
-        notifier.send("Untis Watcher is now up and running! I'll notify you of any timetable changes.")
-        print("Startup notification sent to Telegram.")
-    except Exception as e:
-        print(f"Failed to send startup notification: {e}")
-
-    # ── Poll loop ──────────────────────────────────────────────────────────────
-    while running:
+def _login_with_retry() -> object:
+    """Log in to WebUntis, retrying once before surfacing a fatal login error."""
+    last_error: Exception | None = None
+    for attempt in range(1, 3):
         try:
             session = timetable.get_session()
-            try:
-                current_tt   = timetable.fetch(session)
-                current_hash = detector.hash_tt(current_tt)
+            logger.info("Login successful on attempt %s.", attempt)
+            return session
+        except Exception as exc:
+            last_error = exc
+            logger.warning("Login failed on attempt %s/2: %s", attempt, exc)
+            if attempt == 1:
+                time.sleep(2)
 
-                if current_hash != last_hash and last_hash is not None and not is_first_run:
-                    print("[poll] Change detected – analysing …")
-                    changes = detector.find_changes(last_tt, current_tt)
-                    print(f"       {len(changes)} change(s): "
-                          + ", ".join(c["type"] for c in changes))
+    raise LoginFailedError("WebUntis login failed after 2 attempts.") from last_error
 
-                    summary = ai.explain(last_tt, current_tt, changes)
-                    print(f"       AI summary: {summary[:80]}{'…' if len(summary) > 80 else ''}")
 
-                    notifier.send(summary)
-                    print("       Telegram message sent.")
-                elif is_first_run:
-                    print(f"[poll] First run – saved baseline with {len(current_tt)} lessons.")
-                    is_first_run = False  # Only skip once
-                else:
-                    print(f"[poll] No change detected ({len(current_tt)} lessons).")
+def _fetch_current_timetable(session: object) -> list[dict]:
+    """Fetch the latest WebUntis timetable and log the result."""
+    try:
+        current_timetable = timetable.fetch(session)
+    except Exception:
+        logger.exception("Fetch failed; state.json will not be overwritten.")
+        raise
 
-                storage.save(current_tt)
-                last_tt   = current_tt
-                last_hash = current_hash
+    logger.info("Fetch successful with %s lesson(s).", len(current_timetable))
+    return current_timetable
 
-            finally:
-                # Always log out, even if an exception occurred above
-                timetable.logout(session)
 
+def _notify_changes(previous_timetable: list[dict], current_timetable: list[dict], changes: list[dict]) -> None:
+    """Generate and send the existing timetable-change notification."""
+    summary = ai.explain(previous_timetable, current_timetable, changes)
+    logger.info("AI summary generated: %s%s", summary[:80], "…" if len(summary) > 80 else "")
+
+    try:
+        notifier.send(summary)
+        logger.info("Telegram notification sent.")
+    except Exception:
+        logger.exception("Notification failed; continuing to persist latest fetched state.")
+
+
+def _process_once(previous_timetable: list[dict]) -> list[dict]:
+    """
+    Run one stateful watcher cycle.
+
+    The state file is overwritten only after a successful fetch. Fetch failures
+    leave the previous state on disk untouched so failed polls do not cause false
+    positives or duplicate notifications on the next run.
+    """
+    session = _login_with_retry()
+    try:
+        current_timetable = _fetch_current_timetable(session)
+    finally:
+        timetable.logout(session)
+
+    previous_normalised = detector.normalise_timetable(previous_timetable)
+    current_normalised = detector.normalise_timetable(current_timetable)
+
+    if not previous_normalised:
+        logger.info("No previous timetable baseline; saving current state without notification.")
+    elif previous_normalised != current_normalised:
+        changes = detector.find_changes(previous_timetable, current_timetable)
+        logger.info("Diff detected with %s change(s): %s", len(changes), ", ".join(c["type"] for c in changes))
+        _notify_changes(previous_timetable, current_timetable, changes)
+    else:
+        logger.info("No change detected; normalised timetable matches persisted state.")
+
+    storage.save_state(current_timetable)
+    logger.info("state.json overwritten with latest fetched data.")
+    return current_timetable
+
+
+def poll_loop() -> None:
+    """Main watcher loop that checks for timetable changes against state.json."""
+    global running
+
+    logger.info("untis-watcher starting up …")
+    previous_timetable = _load_previous_timetable()
+
+    while running:
+        try:
+            previous_timetable = _process_once(previous_timetable)
+        except LoginFailedError:
+            logger.exception("Login failed after retry; exiting watcher.")
+            running = False
+            break
         except Exception:
-            print("[error] Unexpected error during poll:")
-            traceback.print_exc()
-            # Continue the loop – next poll may succeed
+            logger.exception("Unexpected error during watcher cycle; state.json was not overwritten.")
 
-        # Sleep with frequent checks so we can exit quickly
         for _ in range(config.POLL_INTERVAL):
             if not running:
                 break
             time.sleep(1)
-    
-    print("Untis Watcher stopped.")
+
+    logger.info("Untis Watcher stopped.")
 
 
 def on_quit(icon, item):
@@ -155,11 +188,11 @@ def on_quit(icon, item):
 def main() -> None:
     """Run with tray support when available, otherwise run in headless mode."""
     if _HAS_TRAY:
-        # Start polling in a separate thread
+        import pystray
+
         polling_thread = threading.Thread(target=poll_loop, daemon=True)
         polling_thread.start()
 
-        # Create system tray icon
         icon_image = create_icon_image()
         icon = pystray.Icon(
             "untis_watcher",
@@ -171,10 +204,9 @@ def main() -> None:
             )
         )
 
-        # Run the icon (this blocks until quit is called)
         icon.run()
     else:
-        print("[startup] pystray/Pillow not available – running in headless mode.")
+        logger.info("pystray/Pillow not available – running in headless mode.")
         poll_loop()
 
 
