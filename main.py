@@ -65,11 +65,9 @@ def create_icon_image():
 
 
 def _send_startup_greeting() -> None:
-    """Send a friendly startup message to Telegram. Failures are non-fatal."""
+    """Send a startup message to Telegram. Failures are non-fatal."""
     try:
-        notifier.send(
-            "Hey Erdi! \U0001f440 I'm now watching your timetable and will let you know as soon as anything changes. \U0001f4cb"
-        )
+        notifier.send("Watcher started. I'm now keeping an eye on your timetable.")
         logger.info("Startup greeting sent via Telegram.")
     except Exception:
         logger.warning("Could not send startup greeting – Telegram may be unavailable.", exc_info=True)
