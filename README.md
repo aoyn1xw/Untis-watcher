@@ -4,11 +4,11 @@ A Python-based Telegram bot that monitors WebUntis for timetable changes and sen
 
 ## Features
 
-- Fetches timetable data from WebUntis via JSON-RPC API
+- Fetches timetable data from WebUntis via JSON-RPC API, with optional REST API token support
 - Detects changes in lessons, rooms, teachers, or cancellations
 - AI-powered summaries using GitHub Models (GPT-5)
 - Automatic Telegram notifications
-- Persistent storage to track changes across restarts
+- Stateful watcher with persistent `state.json` storage to avoid duplicate notifications across restarts
 - Continuous monitoring with configurable polling interval
 - **Optional system tray integration** on Windows; automatically falls back to headless mode when unavailable
 
@@ -146,13 +146,13 @@ Or double-click `main.py` to run it directly.
 
 The bot will:
 1. Start in the background with a **system tray icon**
-2. Send a Telegram confirmation message
+2. Load or create its persistent `state.json` baseline
 3. Monitor your timetable every 5 minutes
-4. Show notifications for any changes
+4. Show notifications only for real timetable changes
 
 **To quit:** Right-click the system tray icon and select "Quit"
 
-**First run:** The bot will save your current timetable as a baseline and won't send notifications until actual changes are detected.
+**First run:** The bot will save your current timetable to `state.json` as a baseline and won't send notifications until actual changes are detected.
 
 ### Linux/macOS (Terminal)
 
@@ -269,7 +269,7 @@ The executable will be created in the `dist/` folder. Make sure to place your `.
 - Ensure you're within GitHub Models rate limits
 
 ### No Changes Detected
-- The bot only notifies on changes, not on every poll
+- The bot only notifies on deterministic changes between `state.json` and the latest WebUntis fetch, not on every poll or restart
 - Check that `POLL_INTERVAL` isn't too long
 - Verify the timetable data is being fetched correctly
 
@@ -281,7 +281,7 @@ The executable will be created in the `dist/` folder. Make sure to place your `.
 
 ```
 Untis-watcher/
-├── main.py          # Entry point and polling loop
+├── main.py          # Entry point and stateful watcher loop
 ├── timetable.py     # WebUntis API integration (JSON-RPC)
 ├── detector.py      # Change detection logic
 ├── ai.py           # GitHub Models integration
@@ -289,17 +289,18 @@ Untis-watcher/
 ├── storage.py       # Persistent timetable storage
 ├── config.py        # Environment variable loading
 ├── requirements.txt # Python dependencies
-└── .env            # Configuration (not in git)
+├── .env            # Configuration (not in git)
+└── state.json       # Last known WebUntis state (not in git; generated on first run)
 ```
 
 ## How It Works
 
-1. **Authentication**: Logs into WebUntis using JSON-RPC API
-2. **Fetching**: Retrieves the weekly timetable for your student ID
-3. **Change Detection**: Compares with previous timetable to find differences
-4. **AI Analysis**: GitHub Models (GPT-5) generates a friendly summary
-5. **Notification**: Sends the summary to your Telegram
-6. **Storage**: Saves the current timetable for next comparison
+1. **Authentication**: Logs into WebUntis using a WebUntis-style JSON-RPC session (or optional REST bearer token credentials)
+2. **State Loading**: Reads the previous WebUntis snapshot from `state.json` if it exists
+3. **Fetching**: Validates the session, retrieves the weekly timetable for your student ID, and normalizes lesson fields
+4. **Deep Comparison**: Normalizes previous and current datasets before comparing them deterministically
+5. **Notification**: Sends an AI-generated Telegram summary only when real differences exist
+6. **Storage**: Overwrites `state.json` with the latest data after a successful fetch; failed fetches keep the previous state intact
 
 ## Manual CI/CD (GitHub Actions)
 
@@ -357,7 +358,7 @@ The uploaded artifact appears in the workflow run summary under **Artifacts**.
 
 ## Disclaimer
 
-This project uses WebUntis JSON-RPC API endpoints that are not officially documented. Functionality may break if WebUntis changes its internal API.
+This project uses WebUntis JSON-RPC API endpoints that are not officially documented, plus optional WebUntis REST endpoints when REST credentials are configured. Functionality may break if WebUntis changes its internal API.
 
 **Important:**
 - Use responsibly and ensure compliance with your school's policies
@@ -382,3 +383,8 @@ If you encounter issues:
 1. Check the troubleshooting section above
 2. Review your `.env` configuration
 3. Open an issue on GitHub with error details
+
+
+## Credits
+
+The WebUntis JSON-RPC session flow, timetable options, session validation idea, and cookie handling in this project were improved with inspiration from [SchoolUtils/WebUntis](https://github.com/SchoolUtils/WebUntis), an MIT-licensed Node.js WebUntis API wrapper by Nils Bergmann and contributors. This project is not affiliated with Untis GmbH or SchoolUtils.

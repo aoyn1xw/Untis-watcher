@@ -1,52 +1,99 @@
 """
-detector.py – Hash a timetable and find what changed between two snapshots.
+detector.py – Deterministically normalise, compare, and diff timetable snapshots.
 """
 
 import hashlib
 import json
+from typing import Any
 
-# Only compare fields that represent meaningful timetable changes:
-# start/end time, subject list, raw code, and resolved change type.
-# This intentionally ignores incidental metadata noise from WebUntis
-# (for example teacher/room metadata reshuffling that doesn't affect
-# the core lesson change semantics).
-COMPARE_KEYS = {"start", "end", "subjects", "code", "change_type"}
 _MISSING_ID_SORT_KEY = "\uffff__missing_lesson_id__"
 _MISSING_ID_MATCH_KEYS = {"start", "end", "subjects"}
+_ORDER_INSENSITIVE_LIST_FIELDS = {"subjects", "teachers", "rooms"}
 
 
-def _lesson_sig(lesson: dict) -> dict:
-    """Return only the lesson fields relevant for change detection."""
-    return {key: lesson.get(key) for key in COMPARE_KEYS}
-
-
-def _normalise_lesson_id(lesson_id) -> str | None:
+def _normalise_lesson_id(lesson_id: Any) -> str | None:
     """Normalise lesson IDs so mixed int/str IDs map to the same key."""
     if lesson_id is None:
         return None
     return str(lesson_id)
 
 
+def _normalise_value(value: Any, *, field_name: str | None = None) -> Any:
+    """Return a JSON-stable representation for deep comparison."""
+    if isinstance(value, dict):
+        return {str(key): _normalise_value(value[key], field_name=str(key)) for key in sorted(value)}
+
+    if isinstance(value, list):
+        items = [_normalise_value(item) for item in value]
+        if field_name in _ORDER_INSENSITIVE_LIST_FIELDS:
+            return sorted(items, key=lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False))
+        return items
+
+    if isinstance(value, tuple):
+        return [_normalise_value(item) for item in value]
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    return str(value)
+
+
+def _lesson_sort_key(lesson: dict) -> tuple[str, str, str, str]:
+    normalised_id = _normalise_lesson_id(lesson.get("id")) or _MISSING_ID_SORT_KEY
+    serialised = json.dumps(lesson, sort_keys=True, ensure_ascii=False)
+    return (str(lesson.get("start") or ""), str(lesson.get("end") or ""), normalised_id, serialised)
+
+
+def normalise_timetable(tt: list[dict] | None) -> list[dict]:
+    """Return a deterministic, deep-comparable timetable representation."""
+    if not tt:
+        return []
+
+    normalised = []
+    for lesson in tt:
+        if not isinstance(lesson, dict):
+            continue
+
+        normalised_lesson = _normalise_value(lesson)
+        normalised_lesson["id"] = _normalise_lesson_id(lesson.get("id"))
+        normalised.append(normalised_lesson)
+
+    return sorted(normalised, key=_lesson_sort_key)
+
+
+def timetables_equal(old: list[dict] | None, new: list[dict] | None) -> bool:
+    """Deep-compare two timetable snapshots after deterministic normalisation."""
+    return normalise_timetable(old) == normalise_timetable(new)
+
+
+def _serialise_normalised(tt: list[dict] | None) -> str:
+    return json.dumps(normalise_timetable(tt), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def hash_tt(tt: list[dict] | None) -> str:
+    """Return an MD5 hex-digest of the deep-normalised timetable."""
+    return hashlib.md5(_serialise_normalised(tt).encode()).hexdigest()
+
+
 def _missing_id_base_key(lesson: dict) -> str:
     """
     Build a fallback key base for lessons that have no ID.
-    Uses a stable subset so state-like fields (code/change_type) can change
-    without turning a single lesson update into remove+add.
+    Uses a stable subset so state-like fields can change without turning one
+    lesson update into remove+add.
     """
     sig = {key: lesson.get(key) for key in _MISSING_ID_MATCH_KEYS}
-    return f"missing:{json.dumps(sig, sort_keys=True, ensure_ascii=False)}"
+    return f"missing:{json.dumps(_normalise_value(sig), sort_keys=True, ensure_ascii=False)}"
 
 
-def _index_lessons_by_id(tt: list[dict]) -> dict[str, dict]:
+def _index_lessons_by_id(tt: list[dict] | None) -> dict[str, dict]:
     """
     Index lessons by normalised ID.
-    For missing IDs, use a deterministic fallback key plus an occurrence suffix
-    to avoid overwriting duplicate lessons with equivalent signatures.
+    For missing IDs, use a deterministic fallback key plus an occurrence suffix.
     """
     indexed: dict[str, dict] = {}
     missing_counts: dict[str, int] = {}
 
-    for lesson in tt:
+    for lesson in normalise_timetable(tt):
         lesson_id = _normalise_lesson_id(lesson.get("id"))
         if lesson_id is None:
             base_key = _missing_id_base_key(lesson)
@@ -60,31 +107,12 @@ def _index_lessons_by_id(tt: list[dict]) -> dict[str, dict]:
     return indexed
 
 
-def _normalise_tt(tt: list[dict]) -> list[dict]:
-    """Return a deterministic, comparison-aligned timetable representation."""
-    return sorted(
-        [{"id": _normalise_lesson_id(lesson.get("id")), **_lesson_sig(lesson)} for lesson in tt],
-        key=lambda lesson: lesson["id"] if lesson["id"] is not None else _MISSING_ID_SORT_KEY,
-    )
-
-
-def hash_tt(tt: list[dict]) -> str:
+def find_changes(old: list[dict] | None, new: list[dict] | None) -> list[dict]:
     """
-    Return an MD5 hex-digest of the serialised timetable.
-    Used as a cheap equality check before doing deeper diff work.
-    """
-    # Hash the same meaningful lesson representation used for comparisons,
-    # so incidental metadata changes do not trigger false positives.
-    serialised = json.dumps(_normalise_tt(tt), sort_keys=True, ensure_ascii=False)
-    return hashlib.md5(serialised.encode()).hexdigest()
-
-
-def find_changes(old: list[dict], new: list[dict]) -> list[dict]:
-    """
-    Compare two timetable snapshots by lesson ID.
+    Deep-compare two normalised timetable snapshots by lesson ID.
 
     Returns a list of change dicts, each with:
-      - type:   "added" | "removed" | "changed"
+      - type:   "added" | "removed" | "changed" | "exam"
       - lesson: the new lesson (added / changed) or the old lesson (removed)
       - before: previous lesson state  (only for "changed")
       - after:  new lesson state        (only for "changed")
@@ -94,29 +122,24 @@ def find_changes(old: list[dict], new: list[dict]) -> list[dict]:
 
     changes = []
 
-    # Lessons present in new but not in old → added
     for lid, lesson in new_by_id.items():
         if lid not in old_by_id:
             changes.append({"type": "added", "lesson": lesson})
 
-    # Lessons present in old but not in new → removed
     for lid, lesson in old_by_id.items():
         if lid not in new_by_id:
             changes.append({"type": "removed", "lesson": lesson})
 
-    # Lessons in both → check for modifications or newly-flagged exams
-    for lid in old_by_id.keys() & new_by_id.keys():
+    for lid in sorted(old_by_id.keys() & new_by_id.keys()):
         before = old_by_id[lid]
         after = new_by_id[lid]
-        if _lesson_sig(before) != _lesson_sig(after):
+        if before != after:
+            change_type = "exam" if after.get("change_type") == "exam" and before.get("change_type") != "exam" else "changed"
             changes.append({
-                "type": "changed",
+                "type": change_type,
                 "lesson": after,
                 "before": before,
                 "after": after,
             })
-        elif after.get("change_type") == "exam" and before.get("change_type") != "exam":
-            # Exam newly flagged on this lesson – always worth notifying about
-            changes.append({"type": "exam", "lesson": after})
 
     return changes

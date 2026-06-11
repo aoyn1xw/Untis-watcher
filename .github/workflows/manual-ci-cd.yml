@@ -107,9 +107,12 @@ jobs:
           assert changes[0]["type"] == "changed"
 
           # Storage roundtrip
-          storage.save(new)
-          loaded = storage.load()
-          assert loaded == new
+          storage.save_state(new)
+          loaded_state = storage.load_state()
+          assert loaded_state["timetable"] == new
+          assert storage.load() == new
+          if os.path.exists("state.json"):
+              os.remove("state.json")
           if os.path.exists("last_timetable.json"):
               os.remove("last_timetable.json")
 
