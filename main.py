@@ -72,6 +72,30 @@ def _sanitize_error(exc: Exception) -> str:
     return msg
 
 
+def _log_startup_config() -> None:
+    """Log active configuration at startup with secrets masked."""
+    def _mask(value: str | None, show_chars: int = 4) -> str:
+        if not value:
+            return "(not set)"
+        if len(value) <= show_chars:
+            return "****"
+        return value[:show_chars] + "****"
+
+    logger.info("[config] Untis server  : %s", config.UNTIS_SERVER or "(not set)")
+    logger.info("[config] Untis school  : %s", config.UNTIS_SCHOOL or "(not set)")
+    logger.info("[config] Untis user    : %s", config.UNTIS_USER or "(not set)")
+    logger.info("[config] Element ID    : %s  type: %s", config.UNTIS_ELEMENT_ID, config.UNTIS_ELEMENT_TYPE)
+    logger.info("[config] Days ahead    : %s", config.DAYS_AHEAD)
+    logger.info("[config] Poll interval : %ss", config.POLL_INTERVAL)
+    logger.info("[config] Telegram token: %s", _mask(config.TELEGRAM_TOKEN))
+    logger.info("[config] Telegram chat : %s", config.TELEGRAM_CHAT_ID or "(not set)")
+    logger.info("[config] AI enabled    : %s", config.AI_ENABLED)
+    if config.AI_ENABLED:
+        logger.info("[config] AI model      : %s", config.AI_MODEL or "(not set)")
+        logger.info("[config] AI base URL   : %s", config.AI_BASE_URL or "(default OpenAI)")
+        logger.info("[config] AI API key    : %s", _mask(config.AI_API_KEY))
+
+
 def create_icon_image():
     from PIL import Image, ImageDraw
     width = 64
@@ -225,6 +249,7 @@ def poll_loop() -> None:
     global running
 
     logger.info("untis-watcher starting up …")
+    _log_startup_config()
     _send_startup_greeting()
     previous_timetable = _load_previous_timetable()
 

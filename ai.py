@@ -38,7 +38,7 @@ except ImportError:
 
 _client_kwargs: dict = {
     "api_key": AI_API_KEY,
-    "timeout": 30.0,   # never hang longer than 30s
+    "timeout": 8.0,   # fail fast so structured fallback kicks in quickly
 }
 if AI_BASE_URL:
     _client_kwargs["base_url"] = AI_BASE_URL
@@ -135,8 +135,6 @@ def _structured_summary(changes: list[dict]) -> str:
             after = change.get("after") or lesson
 
             # ── Cancellation hidden inside a "changed" entry ──────────────────
-            # Untis keeps cancelled lessons in the timetable with code="cancelled"
-            # so they arrive as type="changed" rather than type="removed".
             was_normal = not _is_cancelled(before)
             now_cancelled = _is_cancelled(after)
             was_cancelled = _is_cancelled(before)
@@ -171,7 +169,6 @@ def _structured_summary(changes: list[dict]) -> str:
             if old_time != new_time:
                 details.append(f"time {old_time} {_ARROW} {new_time}")
 
-            # Surface a code/status change so it never silently falls through
             old_code = str(before.get("code") or before.get("change_type") or "normal").lower()
             new_code = str(after.get("code") or after.get("change_type") or "normal").lower()
             if old_code != new_code and not details:
@@ -200,6 +197,9 @@ def explain(old_tt: list[dict], new_tt: list[dict], changes: list[dict]) -> str:
         logger.info("[ai] AI disabled — using structured plain-text summary.")
         return _structured_summary(changes)
 
+    endpoint = AI_BASE_URL or "https://api.openai.com/v1"
+    logger.info("[ai] Calling model '%s' at %s ...", AI_MODEL, endpoint)
+
     changes_json = json.dumps(changes, ensure_ascii=False, indent=2)
 
     prompt = f"""You are a helpful school assistant for a student named Erdi at \
@@ -226,10 +226,27 @@ Changes detected:
             max_tokens=400,
         )
         content = (response.choices[0].message.content or "").strip()
+
+        # Log token usage if the provider returned it
+        usage = getattr(response, "usage", None)
+        if usage:
+            logger.info(
+                "[ai] Response received. Tokens used: %s prompt + %s completion = %s total.",
+                getattr(usage, "prompt_tokens", "?"),
+                getattr(usage, "completion_tokens", "?"),
+                getattr(usage, "total_tokens", "?"),
+            )
+        else:
+            logger.info("[ai] Response received (no token usage info returned by provider).")
+
         if not content:
             logger.warning("[ai] Model returned empty response — falling back to structured summary.")
             return _structured_summary(changes)
+
+        logger.debug("[ai] Full response: %s", content)
         return content
+
     except _AI_EXCEPTIONS as exc:
-        logger.warning("[ai] Model request failed (%s) — falling back to structured summary.", exc)
+        logger.warning("[ai] Model request failed (%s: %s) — falling back to structured summary.",
+                       type(exc).__name__, exc)
         return _structured_summary(changes)
