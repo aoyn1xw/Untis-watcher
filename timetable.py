@@ -4,6 +4,7 @@ Uses WebUntis JSON-RPC by default, with optional official REST API support.
 """
 
 import base64
+import logging
 import time
 from datetime import date, timedelta
 from typing import Any
@@ -22,6 +23,8 @@ from config import (
     UNTIS_TENANT_ID,
     UNTIS_USER,
 )
+
+logger = logging.getLogger("untis-watcher")
 
 # Keywords in subject names that indicate an exam period
 _EXAM_KEYWORDS = ("prüfung", "klausur", "test", "pruefung")
@@ -240,11 +243,14 @@ def get_bearer_token() -> str:
     cached_token = _token_cache.get("access_token")
     cached_expiry = float(_token_cache.get("expires_at") or 0)
     if isinstance(cached_token, str) and cached_token and now < (cached_expiry - _TOKEN_EXPIRY_SAFETY_SECONDS):
+        logger.debug("[untis] Using cached REST bearer token (expires in %.0fs).",
+                     cached_expiry - now)
         return cached_token
 
     if not (UNTIS_TENANT_ID and UNTIS_CLIENT_ID and UNTIS_API_PASSWORD):
         raise ConnectionError("REST token request requires UNTIS_TENANT_ID, UNTIS_CLIENT_ID, and UNTIS_API_PASSWORD.")
 
+    logger.info("[untis] Requesting new REST bearer token for tenant '%s'.", UNTIS_TENANT_ID)
     basic = base64.b64encode(f"{UNTIS_CLIENT_ID}:{UNTIS_API_PASSWORD}".encode("utf-8")).decode("ascii")
     url = _REST_TOKEN_URL.format(tenant_id=UNTIS_TENANT_ID)
 
@@ -278,6 +284,7 @@ def get_bearer_token() -> str:
 
     _token_cache["access_token"] = token
     _token_cache["expires_at"] = now + max(expires_in_seconds, 0)
+    logger.info("[untis] REST bearer token obtained (expires in %ds).", expires_in_seconds)
     return token
 
 
@@ -291,10 +298,14 @@ def get_session() -> requests.Session | dict:
         )
 
     if use_rest:
+        logger.info("[untis] Authenticating via REST API (tenant: %s).", UNTIS_TENANT_ID)
         return {
             "mode": "rest",
             "token": get_bearer_token(),
         }
+
+    logger.info("[untis] Authenticating via JSON-RPC as user '%s' on %s (school: %s).",
+                UNTIS_USER, UNTIS_SERVER, UNTIS_SCHOOL)
 
     session = requests.Session()
     session._untis_url = _jsonrpc_url()
@@ -333,6 +344,8 @@ def get_session() -> requests.Session | dict:
     session.cookies.set("JSESSIONID", session_id)
     session.cookies.set("schoolname", _school_cookie_value())
 
+    logger.info("[untis] JSON-RPC session opened (personId=%s, personType=%s).",
+                session._person_id, session._person_type)
     return session
 
 
@@ -354,6 +367,7 @@ def logout(session: requests.Session | dict) -> None:
 
     try:
         _jsonrpc_request(session, "logout", request_id="logout")
+        logger.debug("[untis] JSON-RPC session logged out.")
     except Exception:
         pass  # best-effort logout
 
@@ -392,6 +406,7 @@ def fetch_rest(token: str) -> list[dict]:
             raise ConnectionError("WebUntis REST timetable response did not contain a list of periods.")
 
         raw_periods.extend(page_items)
+        logger.debug("[untis] REST page %d: received %d period(s).", page, len(page_items))
 
         has_next = False
         if isinstance(pagination, dict):
@@ -430,6 +445,10 @@ def fetch(session: requests.Session | dict) -> list[dict]:
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     range_end = week_start + timedelta(days=DAYS_AHEAD)
+
+    logger.info("[untis] Fetching timetable for element %s (type %s), %s to %s (%d days ahead).",
+                session._person_id, session._person_type,
+                week_start.isoformat(), range_end.isoformat(), DAYS_AHEAD)
 
     result = _jsonrpc_request(
         session,
@@ -480,4 +499,6 @@ def fetch(session: requests.Session | dict) -> list[dict]:
         if isinstance(period, dict)
     ]
     lessons.sort(key=lambda lesson: (lesson["start"], str(lesson["id"]) if lesson["id"] is not None else ""))
+    logger.info("[untis] Timetable fetched: %d raw period(s) normalised to %d lesson(s).",
+                len(periods), len(lessons))
     return lessons
