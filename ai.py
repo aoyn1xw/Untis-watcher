@@ -38,7 +38,7 @@ except ImportError:
 
 _client_kwargs: dict = {
     "api_key": AI_API_KEY,
-    "timeout": 30.0,   # never hang longer than 30s
+    "timeout": 8.0,   # fail fast so structured fallback kicks in quickly
 }
 if AI_BASE_URL:
     _client_kwargs["base_url"] = AI_BASE_URL
