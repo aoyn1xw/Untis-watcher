@@ -54,6 +54,17 @@ _EMOJI_CHANGED   = "\U0001f7e2"     # 🟢
 _EMOJI_BULLET    = "\u2022"         # •
 _ARROW           = "\u2192"         # →
 
+# Untis codes / change_type values that mean "this lesson was cancelled"
+_CANCELLED_CODES = {"cancelled", "cancel", "entfall"}
+_CANCELLED_CHANGE_TYPES = {"cancelled", "cancel", "entfall"}
+
+
+def _is_cancelled(lesson: dict) -> bool:
+    """Return True if the lesson's code or change_type signals a cancellation."""
+    code = str(lesson.get("code") or "").lower()
+    change_type = str(lesson.get("change_type") or "").lower()
+    return code in _CANCELLED_CODES or change_type in _CANCELLED_CHANGE_TYPES
+
 
 def _fmt_time(iso: str | None) -> str:
     """Convert ISO timestamp to HH:MM, e.g. '2026-06-08T08:20' -> '08:20'."""
@@ -122,6 +133,27 @@ def _structured_summary(changes: list[dict]) -> str:
 
         elif change_type == "changed":
             after = change.get("after") or lesson
+
+            # ── Cancellation hidden inside a "changed" entry ──────────────────
+            # Untis keeps cancelled lessons in the timetable with code="cancelled"
+            # so they arrive as type="changed" rather than type="removed".
+            was_normal = not _is_cancelled(before)
+            now_cancelled = _is_cancelled(after)
+            was_cancelled = _is_cancelled(before)
+            now_normal = not _is_cancelled(after)
+
+            if was_normal and now_cancelled:
+                lines.append(f"{_EMOJI_CANCELLED} CANCELLED: {subject} at {time} — free period!")
+                continue
+
+            # ── Lesson reinstated (cancellation lifted) ───────────────────────
+            if was_cancelled and now_normal:
+                room = _get_room(after)
+                teacher = _get_teacher(after)
+                lines.append(f"{_EMOJI_ADDED} REINSTATED: {subject} at {time} — {teacher}, room {room}")
+                continue
+
+            # ── Regular field-level diff ──────────────────────────────────────
             details = []
 
             old_room = _get_room(before)
@@ -138,6 +170,12 @@ def _structured_summary(changes: list[dict]) -> str:
             new_time = _fmt_time(after.get("start"))
             if old_time != new_time:
                 details.append(f"time {old_time} {_ARROW} {new_time}")
+
+            # Surface a code/status change so it never silently falls through
+            old_code = str(before.get("code") or before.get("change_type") or "normal").lower()
+            new_code = str(after.get("code") or after.get("change_type") or "normal").lower()
+            if old_code != new_code and not details:
+                details.append(f"status {old_code} {_ARROW} {new_code}")
 
             detail_str = ", ".join(details) if details else "details updated"
             lines.append(f"{_EMOJI_CHANGED} CHANGED: {subject} at {time} ({detail_str})")
@@ -169,8 +207,8 @@ Gesamtschule Uellendahl/Katernberg in Germany.
 
 Explain the timetable changes in friendly, clear English.
 Follow these rules:
-- \"cancelled\" (Entfall {_EMOJI_CANCELLED}): tell Erdi he has a free period
-- \"irregular\" (\u00c4nderung {_EMOJI_CHANGED}): explain exactly what changed (room, teacher, or time)
+- "cancelled" (Entfall {_EMOJI_CANCELLED}): tell Erdi he has a free period
+- "irregular" (\u00c4nderung {_EMOJI_CHANGED}): explain exactly what changed (room, teacher, or time)
 - Exams (Pr\u00fcfung {_EMOJI_EXAM}): always mention these FIRST, they are important
 - Be specific: always include subject name, teacher code, time, and room
 - Keep the summary to 3-5 sentences max
