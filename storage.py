@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_STATE_FILE = Path("state.json")
-_LEGACY_TIMETABLE_FILE = Path("last_timetable.json")
+_STATE_FILE = Path(__file__).parent / "state.json"
+_LEGACY_TIMETABLE_FILE = Path(__file__).parent / "last_timetable.json"
 _STATE_VERSION = 1
 
 

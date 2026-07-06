@@ -41,6 +41,7 @@ def build_exe():
         "--hidden-import=requests",
         "--hidden-import=openai",
         "--hidden-import=telegram",
+        "--hidden-import=dotenv",
         "--clean",                      # Clean PyInstaller cache
         "main.py"
     ]
@@ -51,8 +52,8 @@ def build_exe():
         # Copy .env file to dist folder if it exists
         if os.path.exists('.env'):
             import shutil
+            print("WARNING: Copying .env into dist/ — do not share or commit the dist/ folder with credentials.")
             shutil.copy2('.env', 'dist/.env')
-            print("\n✓ Copied .env file to dist folder")
         
         print("\n" + "="*60)
         print("✓ Build completed successfully!")

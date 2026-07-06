@@ -12,6 +12,7 @@ All state is in-memory only; nothing is written to disk.
 
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -54,7 +55,7 @@ class HealthMonitor:
         self.heartbeat_interval_s = heartbeat_interval_s
         self.max_history = max_history
 
-        self._history: list[CycleMetric] = []
+        self._history: deque[CycleMetric] = deque(maxlen=self.max_history)
         self._consecutive_failures: int = 0
         self._total_cycles: int = 0
         self._total_errors: int = 0
@@ -92,8 +93,6 @@ class HealthMonitor:
             error=error,
         )
         self._history.append(metric)
-        if len(self._history) > self.max_history:
-            self._history.pop(0)
 
         self._total_cycles += 1
         is_error = outcome in ("fetch_error", "login_error", "unknown_error")

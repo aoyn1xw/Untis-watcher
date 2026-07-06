@@ -18,10 +18,25 @@ env_path = os.path.join(base_path, '.env')
 load_dotenv(env_path)
 
 # ── WebUntis credentials ────────────────────────────────────────────────────────────────────
-UNTIS_SERVER   = os.environ["UNTIS_SERVER"]    # e.g. "melpomene.webuntis.com"
-UNTIS_SCHOOL   = os.environ["UNTIS_SCHOOL"]    # school slug as shown in the URL
-UNTIS_USER     = os.environ["UNTIS_USER"]
-UNTIS_PASSWORD = os.environ["UNTIS_PASSWORD"]
+try:
+    UNTIS_SERVER = os.environ["UNTIS_SERVER"]
+except KeyError:
+    raise KeyError("Missing required env var UNTIS_SERVER. Did you run setup.py or create .env?") from None
+
+try:
+    UNTIS_SCHOOL = os.environ["UNTIS_SCHOOL"]
+except KeyError:
+    raise KeyError("Missing required env var UNTIS_SCHOOL. Did you run setup.py or create .env?") from None
+
+try:
+    UNTIS_USER = os.environ["UNTIS_USER"]
+except KeyError:
+    raise KeyError("Missing required env var UNTIS_USER. Did you run setup.py or create .env?") from None
+
+try:
+    UNTIS_PASSWORD = os.environ["UNTIS_PASSWORD"]
+except KeyError:
+    raise KeyError("Missing required env var UNTIS_PASSWORD. Did you run setup.py or create .env?") from None
 UNTIS_ELEMENT_TYPE = int(os.getenv("UNTIS_ELEMENT_TYPE", "5"))  # 5=class/student
 UNTIS_ELEMENT_ID   = int(os.environ["UNTIS_ELEMENT_ID"])        # your class/student ID
 UNTIS_TENANT_ID    = os.getenv("UNTIS_TENANT_ID")

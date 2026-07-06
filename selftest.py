@@ -14,7 +14,6 @@ Each check prints PASS or FAIL with a short reason. No state.json is touched.
 """
 
 import sys
-import asyncio
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,7 +52,7 @@ def check_ai() -> None:
     print(f"\n{YELLOW}[2/3] AI endpoint{RESET}")
     try:
         from config import AI_BASE_URL, AI_MODEL
-        from ai import explain, _fallback_summary
+        from ai import explain, _structured_summary
 
         fake_changes = [
             {
@@ -67,7 +66,7 @@ def check_ai() -> None:
         ]
 
         result = explain([], [], fake_changes)
-        fallback = _fallback_summary(fake_changes)
+        fallback = _structured_summary(fake_changes)
 
         if result == fallback:
             # explain() returned the plain-text fallback, meaning the API call failed

@@ -43,7 +43,14 @@ _client_kwargs: dict = {
 if AI_BASE_URL:
     _client_kwargs["base_url"] = AI_BASE_URL
 
-_client = OpenAI(**_client_kwargs)
+_client = None
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(**_client_kwargs)
+    return _client
 
 # Emoji constants (proper Unicode codepoints, not surrogate pairs)
 _EMOJI_WARNING   = "\u26a0\ufe0f"   # ⚠️
@@ -220,7 +227,7 @@ Changes detected:
 """
 
     try:
-        response = _client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model=AI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=400,

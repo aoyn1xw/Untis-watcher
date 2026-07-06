@@ -45,7 +45,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("untis-watcher")
 
-running = True
+_stop_event = threading.Event()
 
 _health = health.HealthMonitor(
     failure_threshold=getattr(config, "FAILURE_ALERT_THRESHOLD", 3),
@@ -246,14 +246,12 @@ def run_test_notification() -> None:
 
 
 def poll_loop() -> None:
-    global running
-
     logger.info("untis-watcher starting up …")
     _log_startup_config()
     _send_startup_greeting()
     previous_timetable = _load_previous_timetable()
 
-    while running:
+    while not _stop_event.is_set():
         cycle_start = time.time()
         outcome: str = "unknown_error"
         change_count: int = 0
@@ -271,7 +269,7 @@ def poll_loop() -> None:
                 error=error_str,
                 send_alert_fn=notifier.send,
             )
-            running = False
+            _stop_event.set()
             break
         except Exception as exc:
             error_str = _sanitize_error(exc)
@@ -295,7 +293,7 @@ def poll_loop() -> None:
         _health.maybe_send_heartbeat(send_fn=notifier.send)
 
         for _ in range(config.POLL_INTERVAL):
-            if not running:
+            if _stop_event.is_set():
                 break
             time.sleep(1)
 
@@ -303,8 +301,7 @@ def poll_loop() -> None:
 
 
 def on_quit(icon, item):
-    global running
-    running = False
+    _stop_event.set()
     icon.stop()
 
 
