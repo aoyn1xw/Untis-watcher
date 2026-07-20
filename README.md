@@ -5,7 +5,7 @@ A Python-based Telegram bot that monitors WebUntis for timetable changes and sen
 ## Note
 
 I recently graduated and no longer have access to Untis, so I am unable to continue maintaining this project.
-This repository is now archived and will remain available as a reference. contibuter are still welcommen ofc.
+This repository is now archived and will remain available as a reference.
 
 ## Features
 
