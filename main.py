@@ -93,7 +93,7 @@ def _log_startup_config() -> None:
     if config.AI_ENABLED:
         logger.info("[config] AI model      : %s", config.AI_MODEL or "(not set)")
         logger.info("[config] AI base URL   : %s", config.AI_BASE_URL or "(default OpenAI)")
-        logger.info("[config] AI API key    : %s", _mask(config.AI_API_KEY))
+        logger.info("[config] AI API key    : %s", _mask(config.AI_API_KEY))  # CodeQL[py/clear-text-logging-sensitive-data] - value is masked
 
 
 def create_icon_image():

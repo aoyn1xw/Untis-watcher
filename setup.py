@@ -64,10 +64,10 @@ def _ask(prompt: str, default: str = "", secret: bool = False, hint: str = "") -
     if hint:
         print(f"  {_dim(hint)}")
 
-    default_display = f"[{_dim(default)}] " if default else ""
-
-    if secret and default:
-        default_display = f"[{_dim('****')}] "
+    if secret:
+        default_display = f"[{_dim('****')}] " if default else ""
+    else:
+        default_display = f"[{_dim(default)}] " if default else ""
 
     while True:
         try:
@@ -305,7 +305,7 @@ def write_env(path: str, values: dict) -> None:
         f'UNTIS_SERVER={values.get("UNTIS_SERVER", "")}',
         f'UNTIS_SCHOOL={values.get("UNTIS_SCHOOL", "")}',
         f'UNTIS_USER={values.get("UNTIS_USER", "")}',
-        f'UNTIS_PASSWORD={values.get("UNTIS_PASSWORD", "")}',
+        f'UNTIS_PASSWORD={values.get("UNTIS_PASSWORD", "")}',  # CodeQL[py/clear-text-storage-sensitive-data] - .env is the intended credential store
         f'UNTIS_ELEMENT_ID={values.get("UNTIS_ELEMENT_ID", "")}',
         f'UNTIS_ELEMENT_TYPE={values.get("UNTIS_ELEMENT_TYPE", "5")}',
         "",
